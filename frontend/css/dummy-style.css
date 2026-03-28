@@ -1,0 +1,66 @@
+:root {
+  /* Updated palette: user-specified */
+  --primary: #cb997e;
+  --secondary: #ddbea9;
+  --background: #ffe8d6;
+  --text-primary: #6b705c;
+  --text-secondary: #a5a58d;
+  --card-bg: #b7b7a4;
+  --card-shadow: rgba(107, 112, 92, 0.1);
+  --hover-shadow: rgba(107, 112, 92, 0.2);
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background: var(--background);
+  color: var(--text-primary);
+  margin: 0;
+  padding: 0;
+}
+
+/* Header */
+.site-header {
+  background: var(--primary);
+  color: white;
+  padding: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 2px 4px var(--card-shadow);
+}
+
+/* Tiles */
+.tile {
+  background: var(--card-bg);
+  border-radius: 12px;
+  box-shadow: 0 4px 8px var(--card-shadow);
+  transition: transform 0.3s, box-shadow 0.3s;
+}
+
+.tile:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 6px 12px var(--hover-shadow);
+}
+
+.tile h3 {
+  color: var(--primary);
+}
+
+.tile p {
+  color: var(--text-secondary);
+}
+
+/* Buttons */
+.button {
+  background: var(--secondary);
+  color: white;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.button:hover {
+  background: var(--primary);
+}

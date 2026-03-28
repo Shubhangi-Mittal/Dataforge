@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DAG Visualizer &mdash; DataForge</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/style.css">
+<style>
+  #dag-canvas { width:100%; border:1px solid var(--border); border-radius:12px; background:#0d0d1a; margin-top:16px; }
+  .dag-legend { display:flex; gap:16px; flex-wrap:wrap; margin-top:10px; font-size:0.78rem; color:var(--text-3); }
+  .dag-legend span { display:flex; align-items:center; gap:5px; }
+  .dag-legend i { width:12px; height:12px; border-radius:3px; display:inline-block; }
+</style>
+</head>
+<body>
+<nav>
+  <a href="../index.html" class="logo"><span class="logo-icon">&#9874;</span> DataForge</a>
+  <div class="nav-links"><a href="../index.html">All Tools</a><a href="/docs" target="_blank" rel="noreferrer" class="nav-docs">API Docs</a></div>
+</nav>
+
+<div class="tool-page">
+  <div class="tool-header">
+    <a href="../index.html" class="back-link">&larr; Back to tools</a>
+    <h1>&#9201; DAG Visualizer</h1>
+    <p>Define a pipeline as JSON, visualize the dependency graph, and get critical path analysis.</p>
+  </div>
+
+  <div class="info-box">
+    <strong>What this tool does:</strong> Define data pipelines as JSON with nodes and dependencies, then visualize the DAG graph on an interactive canvas.
+    <ul>
+      <li>Define pipeline nodes with types (extract, transform, load, report, notify) and durations</li>
+      <li>Specify dependencies between nodes to form a directed acyclic graph</li>
+      <li>Visualize the DAG with color-coded nodes and dependency edges</li>
+      <li>Analyze the critical path and identify parallelization opportunities</li>
+    </ul>
+  </div>
+
+  <div class="form-group">
+    <label>Pipeline Definition (JSON)</label>
+    <textarea id="pipeline-input" rows="18">{
+  "name": "ecommerce_etl",
+  "description": "E-commerce data warehouse ETL pipeline",
+  "nodes": {
+    "extract_orders":      { "label": "Extract Orders",      "type": "extract",   "duration_min": 5,  "depends_on": [] },
+    "extract_customers":   { "label": "Extract Customers",   "type": "extract",   "duration_min": 3,  "depends_on": [] },
+    "extract_products":    { "label": "Extract Products",    "type": "extract",   "duration_min": 2,  "depends_on": [] },
+    "clean_orders":        { "label": "Clean Orders",        "type": "transform", "duration_min": 8,  "depends_on": ["extract_orders"] },
+    "clean_customers":     { "label": "Clean Customers",     "type": "transform", "duration_min": 4,  "depends_on": ["extract_customers"] },
+    "join_order_customer": { "label": "Join Orders+Cust",    "type": "transform", "duration_min": 10, "depends_on": ["clean_orders","clean_customers"] },
+    "enrich_products":     { "label": "Enrich Products",     "type": "transform", "duration_min": 6,  "depends_on": ["extract_products"] },
+    "build_fact_table":    { "label": "Build Fact Table",    "type": "load",      "duration_min": 15, "depends_on": ["join_order_customer","enrich_products"] },
+    "update_dashboards":   { "label": "Update Dashboards",   "type": "report",    "duration_min": 5,  "depends_on": ["build_fact_table"] },
+    "send_alerts":         { "label": "Send Alerts",         "type": "notify",    "duration_min": 1,  "depends_on": ["build_fact_table"] }
+  }
+}</textarea>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn btn-primary" id="analyze-btn">Analyze &amp; Visualize</button>
+    <button class="btn btn-secondary" id="clear-btn">Clear</button>
+  </div>
+
+  <div class="loading" id="loading"><div class="spinner"></div><p>Analyzing pipeline...</p></div>
+
+  <div class="results-panel" id="results">
+    <div class="results-header"><h3>DAG Analysis</h3><span class="results-status status-info" id="results-status"></span></div>
+    <div class="results-body">
+      <div class="stats-row" id="stats-row"></div>
+      <canvas id="dag-canvas" height="400"></canvas>
+      <div class="dag-legend" id="dag-legend"></div>
+      <div id="critical-path-section" style="margin-top:16px"></div>
+      <div id="parallel-section" style="margin-top:16px"></div>
+      <details style="margin-top:16px">
+        <summary style="cursor:pointer;font-size:0.82rem;color:var(--text-3);font-weight:600">Raw JSON</summary>
+        <pre id="raw-json"></pre>
+      </details>
+    </div>
+  </div>
+</div>
+
+<footer><p>Built by <strong>Shubhangi Mittal</strong> &middot; DataForge</p></footer>
+
+<script src="/env.js"></script>
+<script src="../js/config.js?v=5"></script>
+<script>
+const input = document.getElementById('pipeline-input');
+const analyzeBtn = document.getElementById('analyze-btn');
+
+analyzeBtn.addEventListener('click', async () => {
+  let pipeline;
+  try { pipeline = JSON.parse(input.value); } catch(e) { return alert('Invalid JSON: ' + e.message); }
+  if (!pipeline.name || !pipeline.nodes) return alert('Pipeline needs "name" and "nodes" fields');
+
+  hideResults(); showLoading();
+  try {
+    // First create the pipeline on the backend
+    await apiPost('/api/dag-visualizer/pipelines', pipeline);
+    // Then analyze it
+    const data = await apiGet('/api/dag-visualizer/analyze/' + encodeURIComponent(pipeline.name));
+    hideLoading();
+    renderResults(data);
+    showResults();
+  } catch(e) { hideLoading(); alert('Error: ' + e.message); }
+});
+
+document.getElementById('clear-btn').addEventListener('click', () => { input.value = ''; hideResults(); });
+
+function renderResults(d) {
+  document.getElementById('results-status').textContent = d.total_nodes + ' nodes \u00B7 ' + d.total_edges + ' edges';
+
+  document.getElementById('stats-row').innerHTML =
+    '<div class="stat-card"><div class="stat-val">' + d.total_nodes + '</div><div class="stat-lbl">Nodes</div></div>' +
+    '<div class="stat-card"><div class="stat-val">' + d.total_edges + '</div><div class="stat-lbl">Edges</div></div>' +
+    '<div class="stat-card"><div class="stat-val">' + d.critical_path.length + '</div><div class="stat-lbl">Critical Path</div></div>' +
+    '<div class="stat-card"><div class="stat-val">' + d.critical_path_duration_min + 'm</div><div class="stat-lbl">Total Duration</div></div>';
+
+  drawDAG(d);
+
+  // Critical path
+  let cpHtml = '<h4 style="font-size:0.88rem;margin-bottom:8px;font-weight:600">Critical Path</h4>';
+  cpHtml += '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">';
+  d.critical_path.forEach((n, i) => {
+    const node = d.nodes.find(nd => nd.id === n);
+    cpHtml += '<span style="background:rgba(255,107,107,0.15);color:#ff6b6b;padding:4px 10px;border-radius:6px;font-size:0.8rem;font-weight:600">' + (node ? node.label : n) + ' (' + (node ? node.duration_min : '?') + 'm)</span>';
+    if (i < d.critical_path.length - 1) cpHtml += '<span style="color:var(--text-3)">\u2192</span>';
+  });
+  cpHtml += '</div>';
+  document.getElementById('critical-path-section').innerHTML = cpHtml;
+
+  // Parallel groups
+  let pgHtml = '<h4 style="font-size:0.88rem;margin-bottom:8px;font-weight:600">Parallelization Groups</h4>';
+  pgHtml += '<table class="errors-table"><thead><tr><th>Start Time</th><th>Parallel Tasks</th></tr></thead><tbody>';
+  d.parallelizable_groups.forEach(g => {
+    const labels = g.nodes.map(n => { const nd = d.nodes.find(x => x.id === n); return nd ? nd.label : n; });
+    pgHtml += '<tr><td>' + g.start_time + 'm</td><td>' + labels.join(', ') + '</td></tr>';
+  });
+  pgHtml += '</tbody></table>';
+  document.getElementById('parallel-section').innerHTML = pgHtml;
+
+  document.getElementById('raw-json').textContent = JSON.stringify(d, null, 2);
+}
+
+const TYPE_COLORS = {
+  extract: '#4ecdc4', transform: '#a78bfa', load: '#f59e0b',
+  compute: '#60a5fa', report: '#34d399', notify: '#f472b6',
+  deploy: '#fb923c', default: '#94a3b8'
+};
+
+function drawDAG(d) {
+  const canvas = document.getElementById('dag-canvas');
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+
+  // Layout: group nodes by their earliest_start (columns)
+  const groups = d.parallelizable_groups;
+  const colCount = groups.length;
+  const maxPerCol = Math.max(...groups.map(g => g.nodes.length));
+
+  const nodeW = 150, nodeH = 50, padX = 60, padY = 40;
+  const totalW = colCount * (nodeW + padX) + padX;
+  const totalH = maxPerCol * (nodeH + padY) + padY * 2;
+
+  canvas.width = totalW * dpr;
+  canvas.height = totalH * dpr;
+  canvas.style.width = totalW + 'px';
+  canvas.style.height = totalH + 'px';
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, totalW, totalH);
+
+  // Compute positions
+  const positions = {};
+  groups.forEach((g, colIdx) => {
+    const x = padX + colIdx * (nodeW + padX);
+    const colNodes = g.nodes;
+    const totalColH = colNodes.length * (nodeH + padY) - padY;
+    const startY = (totalH - totalColH) / 2;
+    colNodes.forEach((nId, rowIdx) => {
+      positions[nId] = { x, y: startY + rowIdx * (nodeH + padY), cx: x + nodeW / 2, cy: startY + rowIdx * (nodeH + padY) + nodeH / 2 };
+    });
+  });
+
+  // Draw edges
+  d.edges.forEach(e => {
+    const from = positions[e.from];
+    const to = positions[e.to];
+    if (!from || !to) return;
+    const isCritical = d.critical_path.includes(e.from) && d.critical_path.includes(e.to);
+    ctx.beginPath();
+    ctx.strokeStyle = isCritical ? '#ff6b6b' : 'rgba(148,163,184,0.35)';
+    ctx.lineWidth = isCritical ? 2.5 : 1.5;
+    const sx = from.x + nodeW, sy = from.cy;
+    const ex = to.x, ey = to.cy;
+    const cp = (ex - sx) * 0.5;
+    ctx.moveTo(sx, sy);
+    ctx.bezierCurveTo(sx + cp, sy, ex - cp, ey, ex, ey);
+    ctx.stroke();
+    // Arrow
+    const angle = Math.atan2(ey - (ey - cp * 0.01), ex - (ex - cp * 0.01));
+    ctx.beginPath();
+    ctx.moveTo(ex, ey);
+    ctx.lineTo(ex - 8 * Math.cos(angle - 0.4), ey - 8 * Math.sin(angle - 0.4));
+    ctx.lineTo(ex - 8 * Math.cos(angle + 0.4), ey - 8 * Math.sin(angle + 0.4));
+    ctx.closePath();
+    ctx.fillStyle = isCritical ? '#ff6b6b' : 'rgba(148,163,184,0.5)';
+    ctx.fill();
+  });
+
+  // Draw nodes
+  d.nodes.forEach(n => {
+    const pos = positions[n.id];
+    if (!pos) return;
+    const color = TYPE_COLORS[n.type] || TYPE_COLORS.default;
+    const isCritical = n.is_critical;
+
+    ctx.shadowColor = color + '40';
+    ctx.shadowBlur = 12;
+
+    ctx.beginPath();
+    ctx.roundRect(pos.x, pos.y, nodeW, nodeH, 8);
+    ctx.fillStyle = '#1a1a2e';
+    ctx.fill();
+    ctx.strokeStyle = isCritical ? '#ff6b6b' : color;
+    ctx.lineWidth = isCritical ? 2.5 : 1.5;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Type indicator bar
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.roundRect(pos.x, pos.y, 5, nodeH, [8, 0, 0, 8]);
+    ctx.fill();
+
+    // Label
+    ctx.fillStyle = '#e2e8f0';
+    ctx.font = '600 11px "DM Sans", sans-serif';
+    ctx.textAlign = 'center';
+    const label = n.label.length > 18 ? n.label.substring(0, 16) + '..' : n.label;
+    ctx.fillText(label, pos.cx, pos.cy - 4);
+
+    // Duration
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '400 10px "JetBrains Mono", monospace';
+    ctx.fillText(n.duration_min + ' min', pos.cx, pos.cy + 12);
+  });
+
+  // Legend
+  const types = [...new Set(d.nodes.map(n => n.type))];
+  let legHtml = '';
+  types.forEach(t => {
+    legHtml += '<span><i style="background:' + (TYPE_COLORS[t] || TYPE_COLORS.default) + '"></i>' + t + '</span>';
+  });
+  legHtml += '<span><i style="background:#ff6b6b"></i>critical path</span>';
+  document.getElementById('dag-legend').innerHTML = legHtml;
+}
+</script>
+</body>
+</html>

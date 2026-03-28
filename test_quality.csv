@@ -1,0 +1,11 @@
+id,name,email,salary,department,join_date
+1,Alice,alice@test.com,75000,Engineering,2023-01-15
+2,Bob,,85000,Engineering,2023-02-20
+3,Charlie,charlie@test.com,,Marketing,2023-03-10
+4,Diana,diana@test.com,95000,,2023-04-05
+5,Eve,eve@test.com,75000,Engineering,2023-05-12
+6,Frank,frank@test.com,250000,Sales,2023-06-01
+7,Grace,grace@test.com,72000,Engineering,
+8,Alice,alice@test.com,75000,Engineering,2023-01-15
+9,,heidi@test.com,68000,Marketing,2023-08-20
+10,Ivan,ivan@test.com,-5000,Engineering,2023-09-15

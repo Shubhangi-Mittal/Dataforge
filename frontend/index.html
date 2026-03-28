@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DataForge — Data Engineering Toolkit</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<script src="/env.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<nav>
+  <a href="/" class="logo">
+    <span class="logo-icon">&#9874;</span> DataForge
+  </a>
+  <div class="nav-links">
+    <a href="#tools">Tools</a>
+    <a href="https://shubhangimittal.github.io" target="_blank" rel="noreferrer">Portfolio</a>
+    <a href="/docs" target="_blank" rel="noreferrer" class="nav-docs">API Docs</a>
+  </div>
+</nav>
+
+<section class="hero">
+  <div class="hero-badge"><span class="pulse-dot"></span> 10 tools &middot; 1 platform</div>
+  <h1>Your data engineering<br><span class="gradient-text">command center</span></h1>
+  <p>Schema validation, SQL analysis, automated EDA, data quality monitoring, and more &mdash; all in one place. Built with FastAPI + Python.</p>
+  <div class="hero-stats">
+    <div class="stat"><span class="stat-num">10</span><span class="stat-label">Tools</span></div>
+    <div class="stat"><span class="stat-num">30+</span><span class="stat-label">API Endpoints</span></div>
+    <div class="stat"><span class="stat-num">0</span><span class="stat-label">Cost to Run</span></div>
+  </div>
+</section>
+
+<section class="tools-section" id="tools">
+  <div class="section-header">
+    <span class="section-tag">Microservices</span>
+    <h2>Pick a tool</h2>
+  </div>
+
+  <div class="tools-grid">
+
+    <a href="pages/csv-validator.html" class="tool-card" style="--accent:#6c5ce7;--accent-dark:#a78bfa">
+      <div class="card-num">01</div>
+      <div class="card-icon" style="background:rgba(108,92,231,0.12)">&#128196;</div>
+      <h3>CSV Schema Validator</h3>
+      <p>Validate CSV/Excel files against schemas. Type checks, null enforcement, uniqueness, and row-level error reports.</p>
+      <div class="card-tags"><span>FastAPI</span><span>Pandas</span><span>Pydantic</span></div>
+      <div class="card-arrow">Open tool &rarr;</div>
+    </a>
+
+    <a href="pages/sql-analyzer.html" class="tool-card" style="--accent:#a78bfa;--accent-dark:#c5b9e8">
+      <div class="card-num">02</div>
+      <div class="card-icon" style="background:rgba(167,139,250,0.12)">&#128200;</div>
+      <h3>SQL Query Analyzer</h3>
+      <p>Paste SQL and get performance insights &mdash; complexity scoring, join analysis, missing indexes, and rewrite suggestions.</p>
+      <div class="card-tags"><span>SQLParse</span><span>Regex</span><span>AST</span></div>
+      <div class="card-arrow">Open tool &rarr;</div>
+    </a>
+
+    <a href="pages/data-quality.html" class="tool-card" style="--accent:#00b894;--accent-dark:#00cec9">
+      <div class="card-num">03</div>
+      <div class="card-icon" style="background:rgba(0,184,148,0.12)">&#128201;</div>
+      <h3>Data Quality Monitor</h3>
+      <p>Automated quality checks &mdash; completeness, uniqueness, outlier detection, and distribution analysis with alerts.</p>
+      <div class="card-tags"><span>Statistics</span><span>Pandas</span><span>Alerts</span></div>
+      <div class="card-arrow">Open tool &rarr;</div>
+    </a>
+
+    <a href="pages/elt-sync.html" class="tool-card" style="--accent:#fdcb6e;--accent-dark:#f0932b">
+      <div class="card-num">04</div>
+      <div class="card-icon" style="background:rgba(253,203,110,0.12)">&#128279;</div>
+      <h3>REST-to-DB Sync</h3>
+      <p>Configure REST API sources, map fields, and sync data into SQLite on demand or on a schedule.</p>
+      <div class="card-tags"><span>REST</span><span>SQLite</span><span>ELT</span></div>
+      <div class="card-arrow">Open tool &rarr;</div>
+    </a>
+
+    <a href="pages/eda-reporter.html" class="tool-card" style="--accent:#00cec9;--accent-dark:#81ecec">
+      <div class="card-num">05</div>
+      <div class="card-icon" style="background:rgba(0,206,201,0.12)">&#128202;</div>
+      <h3>Auto EDA Reporter</h3>
+      <p>Upload a dataset, get instant EDA &mdash; distributions, correlations, outliers, missing values, and actionable insights.</p>
+      <div class="card-tags"><span>NumPy</span><span>Statistics</span><span>Charts</span></div>
+      <div class="card-arrow">Open tool &rarr;</div>
+    </a>
+
+    <a href="pages/lakehouse.html" class="tool-card" style="--accent:#fd79a8;--accent-dark:#e84393">
+      <div class="card-num">06</div>
+      <div class="card-icon" style="background:rgba(253,121,168,0.12)">&#128230;</div>
+      <h3>Lakehouse Organizer</h3>
+      <p>Simulated S3 lakehouse &mdash; auto-partition by date/source, Parquet conversion, and metadata cataloging.</p>
+      <div class="card-tags"><span>S3</span><span>Parquet</span><span>Catalog</span></div>
+      <div class="card-arrow">Open tool &rarr;</div>
+    </a>
+
+    <a href="pages/metrics.html" class="tool-card" style="--accent:#ff6b6b;--accent-dark:#ee5a24">
+      <div class="card-num">07</div>
+      <div class="card-icon" style="background:rgba(255,107,107,0.12)">&#128203;</div>
+      <h3>Metric Registry</h3>
+      <p>Centralized business metric definitions &mdash; formulas, owners, SQL, data lineage. One source of truth for your org.</p>
+      <div class="card-tags"><span>Semantic</span><span>Lineage</span><span>CRUD</span></div>
+      <div class="card-arrow">Open tool &rarr;</div>
+    </a>
+
+    <a href="pages/dag-visualizer.html" class="tool-card" style="--accent:#00cec9;--accent-dark:#00b894">
+      <div class="card-num">08</div>
+      <div class="card-icon" style="background:rgba(0,206,201,0.12)">&#9202;</div>
+      <h3>DAG Visualizer</h3>
+      <p>Parse pipeline configs and visualize dependency graphs &mdash; execution order, critical path, and parallelization.</p>
+      <div class="card-tags"><span>DAG</span><span>Graph</span><span>Analysis</span></div>
+      <div class="card-arrow">Open tool &rarr;</div>
+    </a>
+
+    <a href="pages/log-anomaly.html" class="tool-card" style="--accent:#a78bfa;--accent-dark:#6c5ce7">
+      <div class="card-num">09</div>
+      <div class="card-icon" style="background:rgba(167,139,250,0.12)">&#128269;</div>
+      <h3>Log Anomaly Detector</h3>
+      <p>Ingest metrics and detect anomalies with z-score, IQR, and moving average methods. Real-time alerting.</p>
+      <div class="card-tags"><span>Z-Score</span><span>IQR</span><span>Streaming</span></div>
+      <div class="card-arrow">Open tool &rarr;</div>
+    </a>
+
+    <a href="pages/kpi-digest.html" class="tool-card" style="--accent:#fdcb6e;--accent-dark:#f9ca24">
+      <div class="card-num">10</div>
+      <div class="card-icon" style="background:rgba(253,203,110,0.12)">&#128231;</div>
+      <h3>KPI Digest Bot</h3>
+      <p>Compute KPIs, generate Slack-style daily digests with trend arrows, comparisons, and status indicators.</p>
+      <div class="card-tags"><span>KPIs</span><span>Slack</span><span>Trends</span></div>
+      <div class="card-arrow">Open tool &rarr;</div>
+    </a>
+
+  </div>
+</section>
+
+<footer>
+  <p>Built by <strong>Shubhangi Mittal</strong> &middot; FastAPI + Python &middot; Deployed on Render + Vercel</p>
+</footer>
+
+<script>
+// Scroll reveal with stagger
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      const cards = entry.target.parentElement.children;
+      const idx = Array.from(cards).indexOf(entry.target);
+      setTimeout(() => entry.target.classList.add('visible'), idx * 80);
+      observer.unobserve(entry.target);
+    }
+  });
+}, { threshold: 0.05 });
+document.querySelectorAll('.tool-card').forEach(c => observer.observe(c));
+
+// Card mouse glow effect
+document.querySelectorAll('.tool-card').forEach(card => {
+  card.addEventListener('mousemove', e => {
+    const rect = card.getBoundingClientRect();
+    card.style.setProperty('--mouse-x', ((e.clientX - rect.left) / rect.width * 100) + '%');
+    card.style.setProperty('--mouse-y', ((e.clientY - rect.top) / rect.height * 100) + '%');
+  });
+});
+</script>
+</body>
+</html>

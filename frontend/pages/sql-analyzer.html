@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SQL Query Analyzer — DataForge</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<nav>
+  <a href="../index.html" class="logo"><span class="logo-icon">⚒</span> DataForge</a>
+  <div class="nav-links"><a href="../index.html">All Tools</a><a href="/docs" target="_blank" class="nav-docs">API Docs</a></div>
+</nav>
+
+<div class="tool-page">
+  <div class="tool-header">
+    <a href="../index.html" class="back-link">&larr; Back to tools</a>
+    <h1>&#128200; SQL Query Analyzer</h1>
+    <p>Paste any SQL query and get instant performance insights, complexity scoring, and optimization suggestions.</p>
+  </div>
+
+  <div class="info-box">
+    <strong>How it works:</strong> Paste your SQL queries below to get detailed performance insights including:
+    <ul>
+      <li>Complexity scoring with level breakdown (low / medium / high)</li>
+      <li>Join analysis with type, table, alias, and condition details</li>
+      <li>Index suggestions for frequently filtered or joined columns</li>
+      <li>Optimization warnings with severity ratings and actionable suggestions</li>
+      <li>Visual query breakdown showing table relationships</li>
+    </ul>
+  </div>
+
+  <div class="form-group">
+    <label>Your SQL Query</label>
+    <textarea id="sql-input" placeholder="Paste your SQL query here...">SELECT u.name, COUNT(o.id) AS order_count, SUM(o.amount) AS total_spent
+FROM users u
+LEFT JOIN orders o ON u.id = o.user_id
+WHERE o.created_at >= '2024-01-01'
+GROUP BY u.name
+ORDER BY total_spent DESC</textarea>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn btn-primary" id="analyze-btn">Analyze Query</button>
+    <button class="btn btn-secondary" id="format-btn">Format SQL</button>
+    <button class="btn btn-secondary" id="clear-btn">Clear</button>
+  </div>
+
+  <div class="loading" id="loading"><div class="spinner"></div><p>Analyzing your query...</p></div>
+
+  <div class="results-panel" id="results">
+    <div class="results-header">
+      <h3>Analysis Results</h3>
+      <span class="results-status" id="results-status"></span>
+    </div>
+    <div class="results-body">
+      <div class="stats-row" id="stats-row"></div>
+      <div id="complexity-section"></div>
+      <div id="joins-section"></div>
+      <div id="warnings-section"></div>
+      <div id="indexes-section"></div>
+      <div id="query-breakdown"></div>
+      <details style="margin-top:16px">
+        <summary style="cursor:pointer;font-size:0.82rem;color:var(--text-3);font-weight:600">Raw JSON</summary>
+        <pre id="raw-json"></pre>
+      </details>
+    </div>
+  </div>
+</div>
+
+<footer><p>Built by <strong>Shubhangi Mittal</strong> &middot; DataForge</p></footer>
+
+<script src="/env.js"></script>
+<script src="../js/config.js?v=5"></script>
+<script>
+const sqlInput = document.getElementById('sql-input');
+const analyzeBtn = document.getElementById('analyze-btn');
+const formatBtn = document.getElementById('format-btn');
+
+analyzeBtn.addEventListener('click', async () => {
+  const query = sqlInput.value.trim();
+  if (!query) return alert('Please enter a SQL query');
+  hideResults(); showLoading();
+  analyzeBtn.disabled = true;
+  try {
+    const { data } = await apiPost('/api/sql-analyzer/analyze', { query });
+    hideLoading();
+    renderAnalysis(data);
+    showResults();
+  } catch (e) {
+    hideLoading();
+    alert('Error: ' + e.message);
+  } finally {
+    analyzeBtn.disabled = false;
+  }
+});
+
+formatBtn.addEventListener('click', async () => {
+  const query = sqlInput.value.trim();
+  if (!query) return;
+  formatBtn.disabled = true;
+  try {
+    const { data } = await apiPost('/api/sql-analyzer/format', { query });
+    sqlInput.value = data.formatted;
+  } catch (e) {
+    alert('Error: ' + e.message);
+  } finally {
+    formatBtn.disabled = false;
+  }
+});
+
+document.getElementById('clear-btn').addEventListener('click', () => {
+  sqlInput.value = '';
+  hideResults();
+});
+
+function getComplexityColor(level) {
+  const map = { low: 'var(--green)', medium: 'var(--orange)', high: 'var(--red)', 'very high': 'var(--red)' };
+  return map[level] || 'var(--accent-2)';
+}
+
+function getComplexityPill(level) {
+  const map = { low: 'pill-green', medium: 'pill-orange', high: 'pill-red', 'very high': 'pill-red' };
+  return map[level] || 'pill-blue';
+}
+
+function getComplexityStatus(level) {
+  const map = { low: 'status-pass', medium: 'status-info', high: 'status-fail', 'very high': 'status-fail' };
+  return map[level] || 'status-info';
+}
+
+function buildGauge(score, level) {
+  const maxScore = 100;
+  const clamped = Math.min(score, maxScore);
+  const radius = 48;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (clamped / maxScore) * circumference;
+  const color = getComplexityColor(level);
+
+  return `
+    <div class="gauge-wrap">
+      <div class="gauge">
+        <svg width="120" height="120" viewBox="0 0 120 120">
+          <circle cx="60" cy="60" r="${radius}" fill="none" stroke="var(--border)" stroke-width="8"/>
+          <circle cx="60" cy="60" r="${radius}" fill="none" stroke="${color}" stroke-width="8"
+            stroke-dasharray="${circumference}" stroke-dashoffset="${offset}"
+            stroke-linecap="round" style="transition: stroke-dashoffset 1s ease-out"/>
+        </svg>
+        <div class="gauge-label">
+          <span class="gauge-value" style="background:none;-webkit-text-fill-color:${color};color:${color}">${score}</span>
+          <span class="gauge-text">${level}</span>
+        </div>
+      </div>
+      <div style="flex:1;max-width:400px" id="complexity-factors"></div>
+    </div>`;
+}
+
+function renderAnalysis(d) {
+  const c = d.complexity;
+
+  // Status badge
+  const statusEl = document.getElementById('results-status');
+  statusEl.textContent = 'Complexity: ' + c.level.toUpperCase() + ' (' + c.score + ')';
+  statusEl.className = 'results-status ' + getComplexityStatus(c.level);
+
+  // Stats row
+  document.getElementById('stats-row').innerHTML =
+    '<div class="stat-card"><div class="stat-val">' + escapeHtml(d.query_type) + '</div><div class="stat-lbl">Type</div></div>' +
+    '<div class="stat-card"><div class="stat-val">' + d.tables.length + '</div><div class="stat-lbl">Tables</div></div>' +
+    '<div class="stat-card"><div class="stat-val">' + d.joins.length + '</div><div class="stat-lbl">Joins</div></div>' +
+    '<div class="stat-card"><div class="stat-val">' + d.warning_count + '</div><div class="stat-lbl">Warnings</div></div>';
+
+  // Complexity gauge
+  var cHtml = '<h4 style="font-size:0.88rem;margin:20px 0 8px;font-weight:600">Complexity Analysis</h4>';
+  cHtml += buildGauge(c.score, c.level);
+  document.getElementById('complexity-section').innerHTML = cHtml;
+
+  // Complexity factors
+  var factorsEl = document.getElementById('complexity-factors');
+  if (c.factors && c.factors.length) {
+    var fHtml = '<div style="font-size:0.8rem;font-weight:600;margin-bottom:8px;color:var(--text-2)">Contributing Factors</div>';
+    c.factors.forEach(function(f) {
+      fHtml += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">' +
+        '<span style="width:6px;height:6px;border-radius:50%;background:' + getComplexityColor(c.level) + ';flex-shrink:0"></span>' +
+        '<span style="font-size:0.8rem;color:var(--text-2)">' + escapeHtml(f) + '</span></div>';
+    });
+    factorsEl.innerHTML = fHtml;
+  }
+
+  // Joins table
+  var jHtml = '';
+  if (d.joins.length) {
+    jHtml = '<h4 style="font-size:0.88rem;margin:20px 0 8px;font-weight:600">Joins</h4>';
+    jHtml += '<table class="errors-table"><thead><tr><th>Type</th><th>Table</th><th>Alias</th><th>Condition</th></tr></thead><tbody>';
+    d.joins.forEach(function(j) {
+      jHtml += '<tr>' +
+        '<td><span class="pill pill-cyan">' + escapeHtml(j.type) + '</span></td>' +
+        '<td style="font-family:\'JetBrains Mono\',monospace;font-size:0.78rem">' + escapeHtml(j.table) + '</td>' +
+        '<td>' + escapeHtml(j.alias) + '</td>' +
+        '<td style="font-family:\'JetBrains Mono\',monospace;font-size:0.75rem">' + escapeHtml(j.condition) + '</td>' +
+        '</tr>';
+    });
+    jHtml += '</tbody></table>';
+  }
+  document.getElementById('joins-section').innerHTML = jHtml;
+
+  // Optimization Warnings
+  var wHtml = '';
+  if (d.warnings && d.warnings.length) {
+    wHtml = '<h4 style="font-size:0.88rem;margin:20px 0 8px;font-weight:600">Optimization Warnings</h4>';
+    d.warnings.forEach(function(w) {
+      var sevClass = 'severity-' + w.severity;
+      var pillClass = w.severity === 'error' || w.severity === 'critical' ? 'pill-red' : w.severity === 'warning' ? 'pill-orange' : 'pill-cyan';
+      wHtml += '<div style="padding:14px 18px;border-radius:var(--radius-sm);margin-bottom:10px;border:1px solid var(--border);background:var(--bg)">' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">' +
+        '<span class="pill ' + pillClass + '" style="text-transform:uppercase;letter-spacing:0.06em">' + escapeHtml(w.severity) + '</span>' +
+        '<span style="font-weight:600;font-size:0.85rem;color:var(--text-1)">' + escapeHtml(w.message) + '</span>' +
+        '</div>' +
+        '<div style="font-size:0.78rem;color:var(--text-3);margin-bottom:4px;font-family:\'JetBrains Mono\',monospace">Rule: ' + escapeHtml(w.rule) + '</div>' +
+        '<div style="font-size:0.8rem;color:var(--accent-2)">Suggestion: ' + escapeHtml(w.suggestion) + '</div>' +
+        '</div>';
+    });
+  }
+  document.getElementById('warnings-section').innerHTML = wHtml;
+
+  // Index Suggestions table
+  var iHtml = '';
+  if (d.index_suggestions && d.index_suggestions.length) {
+    iHtml = '<h4 style="font-size:0.88rem;margin:20px 0 8px;font-weight:600">Index Suggestions</h4>';
+    iHtml += '<table class="errors-table"><thead><tr><th>Table</th><th>Column</th><th>Reason</th></tr></thead><tbody>';
+    d.index_suggestions.forEach(function(s) {
+      iHtml += '<tr>' +
+        '<td style="font-family:\'JetBrains Mono\',monospace;font-size:0.78rem">' + escapeHtml(s.table) + '</td>' +
+        '<td style="font-family:\'JetBrains Mono\',monospace;font-size:0.78rem">' + escapeHtml(s.column) + '</td>' +
+        '<td>' + escapeHtml(s.reason) + '</td>' +
+        '</tr>';
+    });
+    iHtml += '</tbody></table>';
+  }
+  document.getElementById('indexes-section').innerHTML = iHtml;
+
+  // Visual Query Breakdown — tables as connected cards
+  var bHtml = '';
+  if (d.tables && d.tables.length) {
+    bHtml = '<h4 style="font-size:0.88rem;margin:20px 0 8px;font-weight:600">Query Breakdown</h4>';
+    bHtml += '<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center">';
+
+    // Build a map of table -> columns used
+    var tableCols = {};
+    d.tables.forEach(function(t) { tableCols[t] = []; });
+    if (d.columns) {
+      d.columns.forEach(function(col) {
+        // Try to match table.column or alias.column patterns
+        var parts = col.split('.');
+        if (parts.length === 2) {
+          var tName = parts[0];
+          // Check if tName matches a table or alias
+          d.tables.forEach(function(t) {
+            if (t.toLowerCase() === tName.toLowerCase()) {
+              tableCols[t].push(parts[1]);
+            }
+          });
+          // Also check join aliases
+          d.joins.forEach(function(j) {
+            if (j.alias && j.alias.toLowerCase() === tName.toLowerCase()) {
+              if (tableCols[j.table]) tableCols[j.table].push(parts[1]);
+            }
+          });
+        }
+      });
+    }
+
+    // Determine join connections
+    var joinMap = {};
+    d.joins.forEach(function(j) {
+      joinMap[j.table] = j.type;
+    });
+
+    d.tables.forEach(function(t, idx) {
+      var borderColor = idx === 0 ? 'var(--accent)' : 'var(--cyan)';
+      var joinType = joinMap[t];
+      var cols = tableCols[t];
+
+      bHtml += '<div style="background:var(--bg-2);border:1px solid var(--border);border-left:3px solid ' + borderColor + ';border-radius:var(--radius-sm);padding:16px 20px;min-width:160px;max-width:240px;flex:1;transition:all 0.3s" onmouseenter="this.style.borderColor=\'var(--accent)\';this.style.transform=\'translateY(-2px)\'" onmouseleave="this.style.borderColor=\'var(--border)\';this.style.borderLeftColor=\'' + borderColor + '\';this.style.transform=\'none\'">';
+      bHtml += '<div style="font-family:\'JetBrains Mono\',monospace;font-size:0.84rem;font-weight:600;color:var(--text-1);margin-bottom:6px">' + escapeHtml(t) + '</div>';
+
+      if (joinType) {
+        bHtml += '<div style="margin-bottom:6px"><span class="pill pill-cyan" style="font-size:0.62rem">' + escapeHtml(joinType) + '</span></div>';
+      } else if (idx === 0) {
+        bHtml += '<div style="margin-bottom:6px"><span class="pill pill-blue" style="font-size:0.62rem">PRIMARY</span></div>';
+      }
+
+      if (cols.length) {
+        cols.forEach(function(col) {
+          bHtml += '<div style="font-size:0.72rem;color:var(--text-3);font-family:\'JetBrains Mono\',monospace;padding:2px 0">' + escapeHtml(col) + '</div>';
+        });
+      }
+
+      bHtml += '</div>';
+
+      // Add connector arrow between cards
+      if (idx < d.tables.length - 1) {
+        bHtml += '<div style="display:flex;align-items:center;color:var(--text-3);font-size:1.2rem;flex-shrink:0;padding:0 4px">&rarr;</div>';
+      }
+    });
+
+    bHtml += '</div>';
+  }
+  document.getElementById('query-breakdown').innerHTML = bHtml;
+
+  // Raw JSON
+  document.getElementById('raw-json').textContent = JSON.stringify(d, null, 2);
+}
+</script>
+</body>
+</html>

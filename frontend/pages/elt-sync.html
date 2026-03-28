@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>REST-to-DB Sync &mdash; DataForge</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<nav>
+  <a href="../index.html" class="logo"><span class="logo-icon">&#9874;</span> DataForge</a>
+  <div class="nav-links"><a href="../index.html">All Tools</a><a href="/docs" target="_blank" rel="noreferrer" class="nav-docs">API Docs</a></div>
+</nav>
+
+<div class="tool-page">
+  <div class="tool-header">
+    <a href="../index.html" class="back-link">&larr; Back to tools</a>
+    <h1>&#128279; REST-to-DB Sync</h1>
+    <p>Configure API sources, map fields, and sync data into your database on demand.</p>
+  </div>
+
+  <div class="info-box">
+    <strong>What this tool does:</strong> Configure REST API sources, map response fields to database columns, and sync data into SQLite.
+    <ul>
+      <li>Create sync configurations with source URL, target table, and field mapping</li>
+      <li>Run syncs on demand and preview the ingested data</li>
+      <li>Supports any JSON REST API as a data source</li>
+      <li>Tracks sync status, row counts, and timing for every run</li>
+    </ul>
+  </div>
+
+  <!-- Create Config Form -->
+  <details open style="margin-bottom:28px">
+    <summary style="cursor:pointer;font-size:0.92rem;font-weight:600;color:var(--accent-2);margin-bottom:12px">Create New Sync Config</summary>
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:24px;margin-top:12px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div class="form-group" style="margin-bottom:0">
+          <label>Config Name</label>
+          <input type="text" id="cfg-name" placeholder="e.g. github_users">
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label>Table Name</label>
+          <input type="text" id="cfg-table" placeholder="e.g. users">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Source URL</label>
+        <input type="url" id="cfg-url" placeholder="https://api.example.com/data">
+      </div>
+      <div class="form-group">
+        <label>Field Mapping (JSON)</label>
+        <textarea id="cfg-mapping" rows="5" placeholder='{"api_field": "db_column", "name": "user_name", "id": "user_id"}'>{
+  "id": "id",
+  "name": "name",
+  "email": "email"
+}</textarea>
+      </div>
+      <div class="btn-row" style="margin-top:12px">
+        <button class="btn btn-primary" id="create-btn">Create Config</button>
+      </div>
+    </div>
+  </details>
+
+  <!-- Select & Run -->
+  <div class="form-group">
+    <label>Select Existing Config</label>
+    <select id="config-select">
+      <option value="">-- Loading configs... --</option>
+    </select>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn btn-primary" id="sync-btn">Run Sync</button>
+    <button class="btn btn-secondary" id="preview-btn">Preview Data</button>
+  </div>
+
+  <div class="loading" id="loading"><div class="spinner"></div><p>Processing...</p></div>
+
+  <div class="results-panel" id="results">
+    <div class="results-header">
+      <h3>Results</h3>
+      <span class="results-status status-info" id="results-status"></span>
+    </div>
+    <div class="results-body">
+      <div class="stats-row" id="stats-row"></div>
+      <div id="content"></div>
+      <details style="margin-top:16px">
+        <summary style="cursor:pointer;font-size:0.82rem;color:var(--text-3);font-weight:600">Raw JSON</summary>
+        <pre id="raw-json"></pre>
+      </details>
+    </div>
+  </div>
+</div>
+
+<footer><p>Built by <strong>Shubhangi Mittal</strong> &middot; DataForge</p></footer>
+
+<script src="/env.js"></script>
+<script src="../js/config.js?v=5"></script>
+<script>
+const sel = document.getElementById('config-select');
+
+/* ── Load existing configs ─────────────────────────── */
+async function loadConfigs() {
+  try {
+    const d = await apiGet('/api/elt-sync/configs');
+    sel.innerHTML = '';
+    if (!d.configs || d.configs.length === 0) {
+      sel.innerHTML = '<option value="">No configs yet</option>';
+      return;
+    }
+    d.configs.forEach(c => {
+      const o = document.createElement('option');
+      o.value = c.name;
+      o.textContent = c.name + ' \u2192 ' + c.table_name;
+      sel.appendChild(o);
+    });
+  } catch (e) {
+    sel.innerHTML = '<option value="">Could not load configs</option>';
+    console.warn(e);
+  }
+}
+loadConfigs();
+
+/* ── Create Config ─────────────────────────────────── */
+document.getElementById('create-btn').addEventListener('click', async () => {
+  const name = document.getElementById('cfg-name').value.trim();
+  const source_url = document.getElementById('cfg-url').value.trim();
+  const table_name = document.getElementById('cfg-table').value.trim();
+  const mappingRaw = document.getElementById('cfg-mapping').value.trim();
+
+  if (!name || !source_url || !table_name) return alert('Please fill in name, URL, and table name.');
+
+  let field_mapping;
+  try { field_mapping = JSON.parse(mappingRaw); } catch (e) { return alert('Invalid JSON in field mapping: ' + e.message); }
+
+  hideResults(); showLoading();
+  try {
+    const { data, status } = await apiPost('/api/elt-sync/configs', {
+      name, source_url, method: 'GET', headers: {}, table_name, field_mapping, schedule: 'manual'
+    });
+    hideLoading();
+    document.getElementById('stats-row').innerHTML = '';
+    document.getElementById('content').innerHTML =
+      '<p style="color:var(--green);font-weight:600;font-size:0.9rem">Config "' + escapeHtml(name) + '" created successfully.</p>';
+    document.getElementById('raw-json').textContent = JSON.stringify(data, null, 2);
+    document.getElementById('results-status').textContent = 'CREATED';
+    document.getElementById('results-status').className = 'results-status status-pass';
+    showResults();
+    loadConfigs();
+  } catch (e) { hideLoading(); alert('Error: ' + e.message); }
+});
+
+/* ── Run Sync ──────────────────────────────────────── */
+document.getElementById('sync-btn').addEventListener('click', async () => {
+  if (!sel.value) return alert('Select a config first.');
+  hideResults(); showLoading();
+  try {
+    const { data } = await apiPost('/api/elt-sync/sync/' + encodeURIComponent(sel.value), {});
+    hideLoading();
+    const r = data.result || data;
+    document.getElementById('results-status').textContent = 'SYNCED';
+    document.getElementById('results-status').className = 'results-status status-pass';
+    document.getElementById('stats-row').innerHTML =
+      '<div class="stat-card"><div class="stat-val">' + (r.rows_synced || 0) + '</div><div class="stat-lbl">Rows Synced</div></div>' +
+      '<div class="stat-card"><div class="stat-val">' + escapeHtml(r.status || 'done') + '</div><div class="stat-lbl">Status</div></div>' +
+      '<div class="stat-card"><div class="stat-val">' + escapeHtml(r.config_name || sel.value) + '</div><div class="stat-lbl">Config</div></div>';
+    let timeHtml = '';
+    if (r.started_at || r.finished_at) {
+      timeHtml = '<p style="font-size:0.8rem;color:var(--text-3);margin-top:12px">Started: ' +
+        escapeHtml(r.started_at || '-') + ' &middot; Finished: ' + escapeHtml(r.finished_at || '-') + '</p>';
+    }
+    document.getElementById('content').innerHTML = timeHtml;
+    document.getElementById('raw-json').textContent = JSON.stringify(data, null, 2);
+    showResults();
+  } catch (e) { hideLoading(); alert('Error: ' + e.message); }
+});
+
+/* ── Preview Data ──────────────────────────────────── */
+document.getElementById('preview-btn').addEventListener('click', async () => {
+  if (!sel.value) return alert('Select a config first.');
+  hideResults(); showLoading();
+  try {
+    const d = await apiGet('/api/elt-sync/preview/' + encodeURIComponent(sel.value));
+    hideLoading();
+    document.getElementById('results-status').textContent = d.count + ' rows';
+    document.getElementById('results-status').className = 'results-status status-info';
+    document.getElementById('stats-row').innerHTML =
+      '<div class="stat-card"><div class="stat-val">' + (d.count || 0) + '</div><div class="stat-lbl">Rows</div></div>' +
+      '<div class="stat-card"><div class="stat-val">' + escapeHtml(d.table || sel.value) + '</div><div class="stat-lbl">Table</div></div>';
+
+    let h = '';
+    if (d.rows && d.rows.length) {
+      const keys = Object.keys(d.rows[0]);
+      h += '<div style="overflow-x:auto"><table class="errors-table"><thead><tr>';
+      keys.forEach(k => { h += '<th>' + escapeHtml(k) + '</th>'; });
+      h += '</tr></thead><tbody>';
+      d.rows.forEach(r => {
+        h += '<tr>';
+        keys.forEach(k => { h += '<td>' + escapeHtml(String(r[k] != null ? r[k] : '')) + '</td>'; });
+        h += '</tr>';
+      });
+      h += '</tbody></table></div>';
+    } else {
+      h = '<p style="color:var(--text-3);font-size:0.84rem">No data yet. Run a sync first.</p>';
+    }
+    document.getElementById('content').innerHTML = h;
+    document.getElementById('raw-json').textContent = JSON.stringify(d, null, 2);
+    showResults();
+  } catch (e) { hideLoading(); alert('Error: ' + e.message); }
+});
+</script>
+</body>
+</html>

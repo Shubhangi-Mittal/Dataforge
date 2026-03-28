@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Auto EDA Reporter — DataForge</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/style.css">
+<style>
+  .info-box {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 20px;
+    font-size: 0.85rem;
+    color: var(--text-2);
+    line-height: 1.6;
+  }
+  .info-box strong { color: var(--text-1); }
+
+  /* Insight cards */
+  .insight-card {
+    padding: 10px 14px;
+    border-radius: 10px;
+    margin-bottom: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .insight-card .badge {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 6px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .insight-card .badge-warning { background: rgba(245,166,35,0.15); color: #f5a623; }
+  .insight-card .badge-info    { background: rgba(90,170,255,0.15); color: #5aaaff; }
+  .insight-card .msg { font-size: 0.83rem; color: var(--text-2); }
+
+  /* Histogram */
+  .histogram-wrap {
+    margin: 12px 0 20px;
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--bg);
+  }
+  .histogram-wrap h5 {
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin: 0 0 10px;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text-2);
+  }
+  .histogram-bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 90px;
+  }
+  .histogram-bar {
+    flex: 1;
+    background: linear-gradient(180deg, #6c63ff 0%, #4a42d1 100%);
+    border-radius: 3px 3px 0 0;
+    min-width: 4px;
+    position: relative;
+    transition: opacity 0.2s;
+  }
+  .histogram-bar:hover { opacity: 0.8; }
+  .histogram-labels {
+    display: flex;
+    gap: 2px;
+    margin-top: 4px;
+  }
+  .histogram-labels span {
+    flex: 1;
+    text-align: center;
+    font-size: 0.6rem;
+    color: var(--text-3);
+    font-family: 'JetBrains Mono', monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Correlation heatmap */
+  .corr-table-wrap { overflow-x: auto; margin: 12px 0 20px; }
+  .corr-table {
+    border-collapse: collapse;
+    font-size: 0.72rem;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .corr-table th {
+    padding: 6px 8px;
+    font-weight: 600;
+    color: var(--text-2);
+    text-align: center;
+    max-width: 80px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .corr-table td {
+    padding: 6px 8px;
+    text-align: center;
+    border: 1px solid var(--border);
+    min-width: 48px;
+    font-weight: 500;
+  }
+
+  /* Categorical bars */
+  .cat-section { margin-top: 20px; }
+  .cat-block {
+    margin-bottom: 16px;
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--bg);
+  }
+  .cat-block h5 {
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin: 0 0 10px;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text-2);
+  }
+  .cat-bar-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 5px;
+  }
+  .cat-bar-label {
+    min-width: 100px;
+    max-width: 160px;
+    font-size: 0.76rem;
+    color: var(--text-2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: right;
+  }
+  .cat-bar-track {
+    flex: 1;
+    height: 18px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .cat-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #6c63ff, #a78bfa);
+    border-radius: 4px;
+    transition: width 0.4s ease;
+  }
+  .cat-bar-val {
+    min-width: 40px;
+    font-size: 0.72rem;
+    color: var(--text-3);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .section-title {
+    font-size: 0.88rem;
+    margin: 20px 0 8px;
+    font-weight: 600;
+    color: var(--text-1);
+  }
+</style>
+</head>
+<body>
+<nav>
+  <a href="../index.html" class="logo"><span class="logo-icon">&#9874;</span> DataForge</a>
+  <div class="nav-links"><a href="../index.html">All Tools</a><a href="/docs" target="_blank" rel="noreferrer" class="nav-docs">API Docs</a></div>
+</nav>
+
+<div class="tool-page">
+  <div class="tool-header">
+    <a href="../index.html" class="back-link">&larr; Back to tools</a>
+    <h1>&#128202; Auto EDA Reporter</h1>
+    <p>Upload a dataset and get an instant exploratory data analysis — stats, distributions, correlations, and insights.</p>
+  </div>
+
+  <div class="info-box">
+    <strong>How it works:</strong> Upload any CSV or Excel dataset for instant exploratory data analysis.
+    You will receive <strong>statistical summaries</strong>, <strong>distribution histograms</strong>,
+    <strong>correlation analysis</strong>, <strong>outlier detection</strong>, and
+    <strong>auto-generated insights</strong> — all without writing a single line of code.
+  </div>
+
+  <div class="upload-zone" id="drop-zone">
+    <div class="upload-icon">&#128202;</div>
+    <p>Drop CSV / Excel file here, or click to browse</p>
+    <div class="file-name" id="file-name"></div>
+    <input type="file" id="file-input" accept=".csv,.xlsx,.xls,.tsv" hidden>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn btn-primary" id="analyze-btn" disabled>Generate EDA Report</button>
+  </div>
+
+  <div class="loading" id="loading"><div class="spinner"></div><p>Crunching your data...</p></div>
+
+  <div class="results-panel" id="results">
+    <div class="results-header">
+      <h3>EDA Report</h3>
+      <span class="results-status status-info" id="results-status">COMPLETE</span>
+    </div>
+    <div class="results-body">
+      <div class="stats-row" id="stats-row"></div>
+      <div id="insights-section"></div>
+      <div id="numeric-section"></div>
+      <div id="histograms-section"></div>
+      <div id="correlation-section"></div>
+      <div id="categorical-section"></div>
+      <details style="margin-top:16px">
+        <summary style="cursor:pointer;font-size:0.82rem;color:var(--text-3);font-weight:600">Raw JSON</summary>
+        <pre id="raw-json"></pre>
+      </details>
+    </div>
+  </div>
+</div>
+
+<footer><p>Built by <strong>Shubhangi Mittal</strong> &middot; DataForge</p></footer>
+
+<script src="/env.js"></script>
+<script src="../js/config.js?v=5"></script>
+<script>
+setupFileUpload('drop-zone', 'file-input', 'file-name');
+
+const fileInput = document.getElementById('file-input');
+const analyzeBtn = document.getElementById('analyze-btn');
+
+fileInput.addEventListener('change', () => { analyzeBtn.disabled = !fileInput.files.length; });
+
+analyzeBtn.addEventListener('click', async () => {
+  const file = fileInput.files[0];
+  if (!file) return;
+  hideResults();
+  showLoading();
+  analyzeBtn.disabled = true;
+  try {
+    const { data } = await apiUpload('/api/eda-reporter/analyze', file);
+    hideLoading();
+    render(data);
+    showResults();
+  } catch (e) {
+    hideLoading();
+    alert('Error: ' + e.message);
+  } finally {
+    analyzeBtn.disabled = false;
+  }
+});
+
+function render(d) {
+  const o = d.overview;
+
+  // Stats row
+  document.getElementById('stats-row').innerHTML = `
+    <div class="stat-card"><div class="stat-val">${o.total_rows}</div><div class="stat-lbl">Rows</div></div>
+    <div class="stat-card"><div class="stat-val">${o.total_columns}</div><div class="stat-lbl">Columns</div></div>
+    <div class="stat-card"><div class="stat-val">${o.numeric_columns}</div><div class="stat-lbl">Numeric Cols</div></div>
+    <div class="stat-card"><div class="stat-val">${o.categorical_columns}</div><div class="stat-lbl">Categorical Cols</div></div>
+    <div class="stat-card"><div class="stat-val">${o.duplicate_pct}%</div><div class="stat-lbl">Duplicate %</div></div>
+  `;
+
+  // Insights
+  let iHtml = '';
+  if (d.insights && d.insights.length) {
+    iHtml = '<h4 class="section-title">Auto-Generated Insights</h4>';
+    d.insights.forEach(i => {
+      const badge = i.type === 'warning' ? 'badge-warning' : 'badge-info';
+      iHtml += `<div class="insight-card">
+        <span class="badge ${badge}">${escapeHtml(i.type)}</span>
+        <span class="msg">${escapeHtml(i.message)}</span>
+      </div>`;
+    });
+  }
+  document.getElementById('insights-section').innerHTML = iHtml;
+
+  // Numeric table
+  const nums = Object.entries(d.numeric_analysis || {});
+  let nHtml = '';
+  if (nums.length) {
+    nHtml = '<h4 class="section-title">Numeric Columns</h4>';
+    nHtml += '<table class="errors-table"><thead><tr><th>Column</th><th>Mean</th><th>Median</th><th>Std</th><th>Min</th><th>Max</th><th>Outliers</th></tr></thead><tbody>';
+    nums.forEach(([col, s]) => {
+      nHtml += `<tr>
+        <td style="font-family:'JetBrains Mono',monospace;font-size:0.78rem">${escapeHtml(col)}</td>
+        <td>${fmt(s.mean)}</td>
+        <td>${fmt(s.median)}</td>
+        <td>${fmt(s.std)}</td>
+        <td>${fmt(s.min)}</td>
+        <td>${fmt(s.max)}</td>
+        <td>${s.outliers ? s.outliers.count : 0}</td>
+      </tr>`;
+    });
+    nHtml += '</tbody></table>';
+  }
+  document.getElementById('numeric-section').innerHTML = nHtml;
+
+  // Histograms
+  let hHtml = '';
+  if (nums.length) {
+    hHtml = '<h4 class="section-title">Distributions</h4>';
+    nums.forEach(([col, s]) => {
+      if (!s.histogram || !s.histogram.counts || !s.histogram.counts.length) return;
+      const counts = s.histogram.counts;
+      const edges = s.histogram.bin_edges;
+      const maxCount = Math.max(...counts);
+      hHtml += `<div class="histogram-wrap"><h5>${escapeHtml(col)}</h5><div class="histogram-bars">`;
+      counts.forEach(c => {
+        const pct = maxCount > 0 ? (c / maxCount) * 100 : 0;
+        hHtml += `<div class="histogram-bar" style="height:${Math.max(pct, 1)}%" title="Count: ${c}"></div>`;
+      });
+      hHtml += '</div>';
+      if (edges && edges.length) {
+        hHtml += '<div class="histogram-labels">';
+        // Show first, middle, last labels
+        const labelCount = counts.length;
+        for (let i = 0; i < labelCount; i++) {
+          const showLabel = (i === 0 || i === labelCount - 1 || i === Math.floor(labelCount / 2));
+          hHtml += `<span>${showLabel ? fmt(edges[i]) : ''}</span>`;
+        }
+        hHtml += '</div>';
+      }
+      hHtml += '</div>';
+    });
+  }
+  document.getElementById('histograms-section').innerHTML = hHtml;
+
+  // Correlation heatmap
+  let cHtml = '';
+  const corr = d.correlation;
+  if (corr && corr.matrix) {
+    const cols = Object.keys(corr.matrix);
+    if (cols.length) {
+      cHtml = '<h4 class="section-title">Correlation Heatmap</h4>';
+      cHtml += '<div class="corr-table-wrap"><table class="corr-table"><thead><tr><th></th>';
+      cols.forEach(c => { cHtml += `<th title="${escapeHtml(c)}">${escapeHtml(c)}</th>`; });
+      cHtml += '</tr></thead><tbody>';
+      cols.forEach(row => {
+        cHtml += `<tr><th style="text-align:right" title="${escapeHtml(row)}">${escapeHtml(row)}</th>`;
+        cols.forEach(col => {
+          const val = corr.matrix[row] ? (corr.matrix[row][col] ?? '') : '';
+          const numVal = parseFloat(val);
+          let bg = 'transparent';
+          if (!isNaN(numVal)) {
+            if (numVal >= 0) {
+              bg = `rgba(76, 175, 80, ${Math.abs(numVal) * 0.7})`;
+            } else {
+              bg = `rgba(244, 67, 54, ${Math.abs(numVal) * 0.7})`;
+            }
+          }
+          cHtml += `<td style="background:${bg};color:var(--text-1)">${!isNaN(numVal) ? numVal.toFixed(2) : val}</td>`;
+        });
+        cHtml += '</tr>';
+      });
+      cHtml += '</tbody></table></div>';
+    }
+    // Strong correlations table
+    const sc = corr.strong_correlations || [];
+    if (sc.length) {
+      cHtml += '<h4 class="section-title">Strong Correlations</h4>';
+      cHtml += '<table class="errors-table"><thead><tr><th>Column 1</th><th>Column 2</th><th>Correlation</th><th>Strength</th></tr></thead><tbody>';
+      sc.forEach(c => {
+        cHtml += `<tr>
+          <td style="font-family:'JetBrains Mono',monospace;font-size:0.78rem">${escapeHtml(c.col1)}</td>
+          <td style="font-family:'JetBrains Mono',monospace;font-size:0.78rem">${escapeHtml(c.col2)}</td>
+          <td>${c.correlation}</td>
+          <td><span class="severity-info">${escapeHtml(c.strength)}</span></td>
+        </tr>`;
+      });
+      cHtml += '</tbody></table>';
+    }
+  }
+  document.getElementById('correlation-section').innerHTML = cHtml;
+
+  // Categorical analysis
+  let catHtml = '';
+  const cats = Object.entries(d.categorical_analysis || {});
+  if (cats.length) {
+    catHtml = '<h4 class="section-title">Categorical Analysis</h4><div class="cat-section">';
+    cats.forEach(([col, info]) => {
+      catHtml += `<div class="cat-block"><h5>${escapeHtml(col)} <span style="font-weight:400;color:var(--text-3)">(${info.unique_count} unique)</span></h5>`;
+      const topValues = info.top_values || {};
+      const entries = Object.entries(topValues);
+      const maxVal = entries.length ? Math.max(...entries.map(e => e[1])) : 1;
+      entries.forEach(([val, count]) => {
+        const pct = maxVal > 0 ? (count / maxVal) * 100 : 0;
+        catHtml += `<div class="cat-bar-row">
+          <span class="cat-bar-label" title="${escapeHtml(val)}">${escapeHtml(val)}</span>
+          <div class="cat-bar-track"><div class="cat-bar-fill" style="width:${pct}%"></div></div>
+          <span class="cat-bar-val">${count}</span>
+        </div>`;
+      });
+      catHtml += '</div>';
+    });
+    catHtml += '</div>';
+  }
+  document.getElementById('categorical-section').innerHTML = catHtml;
+
+  // Raw JSON
+  document.getElementById('raw-json').textContent = JSON.stringify(d, null, 2);
+}
+
+function fmt(v) {
+  if (v === null || v === undefined) return '—';
+  const n = parseFloat(v);
+  if (isNaN(n)) return v;
+  if (Number.isInteger(n)) return n.toLocaleString();
+  return n.toFixed(2);
+}
+</script>
+</body>
+</html>

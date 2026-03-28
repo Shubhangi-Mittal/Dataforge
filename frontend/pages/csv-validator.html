@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CSV Schema Validator — DataForge</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<nav>
+  <a href="../index.html" class="logo"><span class="logo-icon">&#9874;</span> DataForge</a>
+  <div class="nav-links"><a href="../index.html">All Tools</a><a href="/docs" target="_blank" class="nav-docs">API Docs</a></div>
+</nav>
+
+<div class="tool-page">
+  <div class="tool-header">
+    <a href="../index.html" class="back-link">&larr; Back to tools</a>
+    <h1>&#9989; CSV Schema Validator</h1>
+    <p>Validate CSV or Excel files against predefined schemas, or let DataForge auto-infer types and run checks for you.</p>
+  </div>
+
+  <div class="info-box">
+    <strong>What this tool does:</strong> Upload a CSV or Excel file and validate it against a schema definition or use auto-detection to infer column types.
+    The validator checks for:
+    <ul>
+      <li>Type mismatches &mdash; columns that don't match their expected data type</li>
+      <li>Null / missing values &mdash; required fields left empty</li>
+      <li>Uniqueness violations &mdash; duplicate values in columns that should be unique</li>
+      <li>Missing or extra columns &mdash; structural differences from the expected schema</li>
+    </ul>
+  </div>
+
+  <div class="form-group">
+    <label>Schema</label>
+    <select id="schema-select">
+      <option value="_auto">Auto-detect (infer types)</option>
+    </select>
+  </div>
+
+  <div class="upload-zone" id="drop-zone">
+    <div class="upload-icon">&#128196;</div>
+    <p>Drop your CSV / Excel file here, or click to browse</p>
+    <div class="file-name" id="file-name"></div>
+    <input type="file" id="file-input" accept=".csv,.xlsx,.xls,.tsv" hidden>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn btn-primary" id="validate-btn" disabled>Validate File</button>
+    <button class="btn btn-secondary" id="clear-btn">Clear</button>
+  </div>
+
+  <div class="loading" id="loading"><div class="spinner"></div><p>Validating your data...</p></div>
+
+  <div class="results-panel" id="results">
+    <div class="results-header">
+      <h3>Validation Results</h3>
+      <span class="results-status" id="results-status"></span>
+    </div>
+    <div class="results-body">
+      <div class="stats-row" id="stats-row"></div>
+      <div id="schema-section"></div>
+      <div id="bar-chart-section"></div>
+      <div id="errors-section"></div>
+      <details style="margin-top:16px">
+        <summary style="cursor:pointer;font-size:0.82rem;color:var(--text-3);font-weight:600">Raw JSON Response</summary>
+        <pre id="raw-json"></pre>
+      </details>
+    </div>
+  </div>
+</div>
+
+<footer><p>Built by <strong>Shubhangi Mittal</strong> &middot; DataForge</p></footer>
+
+<script src="/env.js"></script>
+<script src="../js/config.js?v=5"></script>
+<script>
+setupFileUpload('drop-zone', 'file-input', 'file-name');
+
+const fileInput = document.getElementById('file-input');
+const validateBtn = document.getElementById('validate-btn');
+const clearBtn = document.getElementById('clear-btn');
+const schemaSelect = document.getElementById('schema-select');
+
+fileInput.addEventListener('change', () => { validateBtn.disabled = !fileInput.files.length; });
+
+/* ── Load schemas ─────────────────────────────────────── */
+(async () => {
+  try {
+    const data = await apiGet('/api/csv-validator/schemas');
+    (data.schemas || []).forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.name;
+      opt.textContent = s.name + ' (' + s.columns + ' columns)';
+      schemaSelect.appendChild(opt);
+    });
+  } catch (e) {
+    console.warn('Could not load schemas:', e.message);
+  }
+})();
+
+/* ── Validate ─────────────────────────────────────────── */
+validateBtn.addEventListener('click', async () => {
+  const file = fileInput.files[0];
+  if (!file) return;
+
+  hideResults();
+  showLoading();
+  validateBtn.disabled = true;
+
+  try {
+    const schema = schemaSelect.value;
+    const path = schema === '_auto'
+      ? '/api/csv-validator/validate-auto'
+      : '/api/csv-validator/validate/' + encodeURIComponent(schema);
+
+    const { data } = await apiUpload(path, file);
+    hideLoading();
+    renderResults(data);
+    showResults();
+  } catch (e) {
+    hideLoading();
+    alert('Validation failed: ' + e.message);
+  } finally {
+    validateBtn.disabled = !fileInput.files.length;
+  }
+});
+
+/* ── Clear ────────────────────────────────────────────── */
+clearBtn.addEventListener('click', () => {
+  fileInput.value = '';
+  document.getElementById('file-name').textContent = '';
+  document.getElementById('file-name').style.display = 'none';
+  validateBtn.disabled = true;
+  hideResults();
+});
+
+/* ── Render ────────────────────────────────────────────── */
+function renderResults(data) {
+  const s = data.summary;
+
+  /* Status badge */
+  const statusEl = document.getElementById('results-status');
+  statusEl.textContent = s.is_valid ? 'VALID' : 'INVALID';
+  statusEl.className = 'results-status ' + (s.is_valid ? 'status-pass' : 'status-fail');
+
+  /* Stats row */
+  document.getElementById('stats-row').innerHTML =
+    '<div class="stat-card"><div class="stat-val">' + s.total_rows + '</div><div class="stat-lbl">Rows</div></div>' +
+    '<div class="stat-card"><div class="stat-val">' + s.total_columns + '</div><div class="stat-lbl">Columns</div></div>' +
+    '<div class="stat-card"><div class="stat-val">' + s.total_errors + '</div><div class="stat-lbl">Errors</div></div>' +
+    '<div class="stat-card"><div class="stat-val">' + s.error_rate + '</div><div class="stat-lbl">Error Rate</div></div>';
+
+  /* Schema diagram */
+  const cr = data.column_report || {};
+  const schema = data.schema || data.inferred_schema || {};
+  const schemaColumns = schema.columns || {};
+  const colKeys = Object.keys(cr);
+  let schemaHtml = '';
+
+  if (colKeys.length) {
+    schemaHtml += '<h4 style="font-size:0.88rem;margin:0 0 12px;font-weight:600">Schema Diagram</h4>';
+    schemaHtml += '<div class="schema-diagram">';
+    colKeys.forEach((col, i) => {
+      const info = cr[col];
+      const colSchema = schemaColumns[col] || {};
+      const dtype = colSchema.type || colSchema.dtype || 'unknown';
+      const required = colSchema.required !== false;
+      const pct = parseValidityPct(info.validity_pct);
+      const pctColor = pct >= 95 ? 'var(--green)' : pct >= 80 ? 'var(--orange)' : 'var(--red)';
+      const borderColor = pct >= 95 ? 'var(--green)' : pct >= 80 ? 'var(--orange)' : 'var(--red)';
+
+      schemaHtml +=
+        '<div class="schema-col" style="border-left-color:' + borderColor + ';animation:fadeUp 0.4s ease-out ' + (i * 0.05) + 's both">' +
+          '<div class="schema-col-name">' + escapeHtml(col) + '</div>' +
+          '<div class="schema-col-type">' + escapeHtml(dtype) + '</div>' +
+          '<div class="schema-col-meta">' +
+            '<span class="pill ' + (required ? 'pill-red' : 'pill-cyan') + '" style="margin-right:6px">' + (required ? 'required' : 'optional') + '</span>' +
+            '<span style="color:' + pctColor + ';font-weight:600">' + pct + '% valid</span>' +
+          '</div>' +
+        '</div>';
+    });
+    schemaHtml += '</div>';
+  }
+  document.getElementById('schema-section').innerHTML = schemaHtml;
+
+  /* Bar chart: validity per column */
+  let barHtml = '';
+  if (colKeys.length) {
+    barHtml += '<h4 style="font-size:0.88rem;margin:24px 0 12px;font-weight:600">Validity by Column</h4>';
+    barHtml += '<div class="bar-chart">';
+    colKeys.forEach((col, i) => {
+      const pct = parseValidityPct(cr[col].validity_pct);
+      const fillColor = pct >= 95
+        ? 'linear-gradient(90deg, var(--green), var(--cyan))'
+        : pct >= 80
+          ? 'linear-gradient(90deg, var(--orange), #f0c040)'
+          : 'linear-gradient(90deg, var(--red), var(--pink))';
+
+      barHtml +=
+        '<div class="bar-row" style="animation:fadeUp 0.35s ease-out ' + (i * 0.04) + 's both">' +
+          '<div class="bar-label" title="' + escapeHtml(col) + '">' + escapeHtml(col) + '</div>' +
+          '<div class="bar-track"><div class="bar-fill" style="width:' + pct + '%;background:' + fillColor + '"></div></div>' +
+          '<div class="bar-value">' + pct + '%</div>' +
+        '</div>';
+    });
+    barHtml += '</div>';
+  }
+  document.getElementById('bar-chart-section').innerHTML = barHtml;
+
+  /* Errors table */
+  const errors = data.errors || [];
+  let errHtml = '';
+  if (errors.length) {
+    errHtml += '<h4 style="font-size:0.88rem;margin:24px 0 8px;font-weight:600">Errors (' + errors.length + ')</h4>';
+    errHtml += '<div style="overflow-x:auto">';
+    errHtml += '<table class="errors-table"><thead><tr>' +
+      '<th>Row</th><th>Column</th><th>Type</th><th>Severity</th><th>Message</th><th>Value</th>' +
+      '</tr></thead><tbody>';
+    errors.slice(0, 100).forEach(e => {
+      const sev = e.severity || 'error';
+      const rowVal = Array.isArray(e.row) ? e.row.join(', ') : e.row;
+      errHtml +=
+        '<tr>' +
+          '<td>' + rowVal + '</td>' +
+          '<td style="font-family:\'JetBrains Mono\',monospace;font-size:0.78rem">' + escapeHtml(e.column) + '</td>' +
+          '<td style="font-family:\'JetBrains Mono\',monospace;font-size:0.76rem">' + escapeHtml(e.error_type) + '</td>' +
+          '<td><span class="severity-' + sev + '">' + sev.toUpperCase() + '</span></td>' +
+          '<td>' + escapeHtml(e.message) + '</td>' +
+          '<td style="font-family:\'JetBrains Mono\',monospace;font-size:0.75rem">' + (e.value != null ? escapeHtml(String(e.value)) : '&mdash;') + '</td>' +
+        '</tr>';
+    });
+    errHtml += '</tbody></table></div>';
+    if (errors.length > 100) {
+      errHtml += '<p style="font-size:0.8rem;color:var(--text-3);margin-top:8px">Showing first 100 of ' + errors.length + ' errors.</p>';
+    }
+  } else {
+    errHtml = '<p style="font-size:0.84rem;color:var(--green);margin-top:20px;font-weight:600">No errors found &mdash; all checks passed.</p>';
+  }
+  document.getElementById('errors-section').innerHTML = errHtml;
+
+  /* Raw JSON */
+  document.getElementById('raw-json').textContent = JSON.stringify(data, null, 2);
+}
+
+function parseValidityPct(value) {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') {
+    const parsed = parseFloat(value.replace('%', ''));
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+  return 100;
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+id,name,age,signup_date,active,email,amount
+1,"Alice, A.",30,2023-01-15,true,alice@example.com,123.45
+2,Bob,25,2022-12-01,false,bob@example.com,0
+3,Charlie,,2023-02-10,true,charlie@example.com,45.60
+4,Denise,40,2021-07-03,yes,denise@example,200.00
+2,Duplicate,25,2022-12-01,false,dup@example.com,0
+6,Emma,29,2023-03-01,no,emma@example.com,NaN
+7,Frank,31,2023-04-01,true,frank@example.com,100.00

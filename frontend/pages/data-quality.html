@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Data Quality Monitor — DataForge</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<nav>
+  <a href="../index.html" class="logo"><span class="logo-icon">⚒</span> DataForge</a>
+  <div class="nav-links"><a href="../index.html">All Tools</a><a href="/docs" target="_blank" class="nav-docs">API Docs</a></div>
+</nav>
+
+<div class="tool-page">
+  <div class="tool-header">
+    <a href="../index.html" class="back-link">← Back to tools</a>
+    <h1>🧹 Data Quality Monitor</h1>
+    <p>Automated quality checks for your datasets — fast, visual, and actionable.</p>
+  </div>
+
+  <div class="info-box">
+    <strong>How it works:</strong> Upload a CSV or Excel dataset and DataForge will run automated quality checks including:
+    <ul>
+      <li><strong>Completeness scoring</strong> — measure how complete each column is</li>
+      <li><strong>Uniqueness analysis</strong> — detect duplicate values across columns</li>
+      <li><strong>Outlier detection</strong> — flag statistical anomalies in numeric fields</li>
+      <li><strong>Null value tracking</strong> — pinpoint missing data hotspots</li>
+      <li><strong>Distribution analysis</strong> — summarize value distributions and data types</li>
+    </ul>
+  </div>
+
+  <div class="upload-zone" id="drop-zone">
+    <div class="upload-icon">📄</div>
+    <p>Drop CSV / Excel file here, or click to browse</p>
+    <div class="file-name" id="file-name"></div>
+    <input type="file" id="file-input" accept=".csv,.xlsx,.xls,.tsv" hidden>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn btn-primary" id="check-btn" disabled>Run Quality Check</button>
+  </div>
+
+  <div class="loading" id="loading"><div class="spinner"></div><p>Analyzing data quality...</p></div>
+
+  <div class="results-panel" id="results">
+    <div class="results-header">
+      <h3>Quality Report</h3>
+      <span class="results-status" id="results-status"></span>
+    </div>
+    <div class="results-body">
+      <div class="stats-row" id="stats-row"></div>
+
+      <div id="gauge-section"></div>
+
+      <div id="bar-chart-section"></div>
+
+      <div id="alerts-section"></div>
+
+      <div id="columns-section"></div>
+
+      <details style="margin-top:16px">
+        <summary style="cursor:pointer;font-size:0.82rem;color:var(--text-3);font-weight:600">Raw JSON</summary>
+        <pre id="raw-json"></pre>
+      </details>
+    </div>
+  </div>
+</div>
+
+<footer><p>Built by <strong>Shubhangi Mittal</strong> · DataForge</p></footer>
+
+<script src="/env.js"></script>
+<script src="../js/config.js?v=5"></script>
+<script>
+setupFileUpload('drop-zone', 'file-input', 'file-name');
+
+const fileInput = document.getElementById('file-input');
+const checkBtn = document.getElementById('check-btn');
+
+fileInput.addEventListener('change', () => { checkBtn.disabled = !fileInput.files.length; });
+
+checkBtn.addEventListener('click', async () => {
+  const file = fileInput.files[0];
+  if (!file) return;
+
+  hideResults();
+  showLoading();
+  checkBtn.disabled = true;
+
+  try {
+    const { data, status } = await apiUpload('/api/data-quality/check', file);
+    hideLoading();
+    render(data);
+    showResults();
+  } catch (e) {
+    hideLoading();
+    alert('Error: ' + e.message);
+  } finally {
+    checkBtn.disabled = false;
+  }
+});
+
+function buildGaugeSVG(pct) {
+  const size = 120;
+  const stroke = 10;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (pct / 100) * circumference;
+
+  let color = '#00b894'; // green
+  if (pct <= 80) color = '#ff6b6b'; // red
+  else if (pct <= 95) color = '#fdcb6e'; // orange
+
+  return `
+    <div class="gauge-wrap">
+      <div class="gauge">
+        <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+          <circle cx="${size/2}" cy="${size/2}" r="${radius}"
+            fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="${stroke}" />
+          <circle cx="${size/2}" cy="${size/2}" r="${radius}"
+            fill="none" stroke="${color}" stroke-width="${stroke}"
+            stroke-linecap="round"
+            stroke-dasharray="${circumference}"
+            stroke-dashoffset="${offset}"
+            style="transition: stroke-dashoffset 1s cubic-bezier(0.25,0.46,0.45,0.94)" />
+        </svg>
+        <div class="gauge-label">
+          <span class="gauge-value">${pct}%</span>
+          <span class="gauge-text">Completeness</span>
+        </div>
+      </div>
+    </div>`;
+}
+
+function buildBarChart(columns) {
+  let html = '<h4 style="font-size:0.88rem;margin-bottom:12px;font-weight:600">Completeness by Column</h4>';
+  html += '<div class="bar-chart">';
+  columns.forEach(c => {
+    const pct = c.completeness_pct;
+    let barColor;
+    if (pct > 95) barColor = 'linear-gradient(90deg, var(--accent), var(--cyan))';
+    else if (pct > 80) barColor = 'linear-gradient(90deg, #fdcb6e, #f0932b)';
+    else barColor = 'linear-gradient(90deg, #ff6b6b, #ee5a24)';
+
+    html += `
+      <div class="bar-row">
+        <span class="bar-label" title="${escapeHtml(c.column)}">${escapeHtml(c.column)}</span>
+        <div class="bar-track">
+          <div class="bar-fill" style="width:${pct}%;background:${barColor}"></div>
+        </div>
+        <span class="bar-value">${pct}%</span>
+      </div>`;
+  });
+  html += '</div>';
+  return html;
+}
+
+function render(d) {
+  const s = d.summary;
+
+  // Status badge
+  const statusEl = document.getElementById('results-status');
+  const colors = { good: 'status-pass', fair: 'status-info', poor: 'status-fail' };
+  statusEl.textContent = s.quality_score.toUpperCase();
+  statusEl.className = 'results-status ' + (colors[s.quality_score] || 'status-info');
+
+  // Stats row
+  document.getElementById('stats-row').innerHTML = `
+    <div class="stat-card"><div class="stat-val">${s.total_rows}</div><div class="stat-lbl">Rows</div></div>
+    <div class="stat-card"><div class="stat-val">${s.total_columns}</div><div class="stat-lbl">Columns</div></div>
+    <div class="stat-card"><div class="stat-val">${s.overall_completeness_pct}%</div><div class="stat-lbl">Completeness</div></div>
+    <div class="stat-card"><div class="stat-val">${s.total_alerts}</div><div class="stat-lbl">Alerts</div></div>`;
+
+  // Gauge
+  document.getElementById('gauge-section').innerHTML = buildGaugeSVG(s.overall_completeness_pct);
+
+  // Bar chart
+  if (d.columns && d.columns.length) {
+    document.getElementById('bar-chart-section').innerHTML = buildBarChart(d.columns);
+  }
+
+  // Alerts
+  let aHtml = '';
+  if (d.alerts && d.alerts.length) {
+    aHtml = '<h4 style="font-size:0.88rem;margin:20px 0 8px;font-weight:600">Alerts</h4>';
+    d.alerts.forEach(a => {
+      const sev = a.severity || 'info';
+      const sevColors = {
+        critical: 'border-left:3px solid #ff4444;',
+        error: 'border-left:3px solid var(--red);',
+        warning: 'border-left:3px solid var(--orange);',
+        info: 'border-left:3px solid var(--cyan);'
+      };
+      const borderStyle = sevColors[sev] || sevColors.info;
+      aHtml += `<div style="padding:12px 16px;border-radius:10px;margin-bottom:8px;border:1px solid var(--border);background:var(--bg);${borderStyle}">
+        <span class="severity-${sev}" style="font-size:0.72rem;text-transform:uppercase;margin-right:8px">${escapeHtml(sev)}</span>
+        <span style="font-size:0.83rem;color:var(--text-2)">${escapeHtml(a.message)}</span>
+        ${a.column ? '<span style="font-size:0.72rem;color:var(--text-3);margin-left:8px;font-family:JetBrains Mono,monospace">[' + escapeHtml(a.column) + ']</span>' : ''}
+      </div>`;
+    });
+  }
+  document.getElementById('alerts-section').innerHTML = aHtml;
+
+  // Column details table
+  let cHtml = '<h4 style="font-size:0.88rem;margin:20px 0 8px;font-weight:600">Column Details</h4>';
+  cHtml += '<div style="overflow-x:auto"><table class="errors-table"><thead><tr>';
+  cHtml += '<th>Column</th><th>Type</th><th>Completeness</th><th>Unique</th><th>Nulls</th><th>Outliers</th>';
+  cHtml += '</tr></thead><tbody>';
+  (d.columns || []).forEach(c => {
+    const outliers = c.outlier_count != null ? c.outlier_count : '—';
+    cHtml += `<tr>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:0.78rem">${escapeHtml(c.column)}</td>
+      <td>${escapeHtml(c.dtype_detected)}</td>
+      <td>${c.completeness_pct}%</td>
+      <td>${c.unique_count}</td>
+      <td>${c.null_count}</td>
+      <td>${outliers}</td>
+    </tr>`;
+  });
+  cHtml += '</tbody></table></div>';
+  document.getElementById('columns-section').innerHTML = cHtml;
+
+  // Raw JSON
+  document.getElementById('raw-json').textContent = JSON.stringify(d, null, 2);
+}
+</script>
+</body>
+</html>

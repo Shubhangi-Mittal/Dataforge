@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lakehouse Organizer &mdash; DataForge</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/style.css">
+<style>
+  .partition-tree { list-style: none; padding: 0; margin: 0; }
+  .partition-tree li { margin-bottom: 8px; }
+  .partition-path {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.82rem;
+    color: var(--cyan); font-weight: 600; margin-bottom: 4px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .partition-path .count {
+    font-size: 0.7rem; color: var(--text-3); font-weight: 400;
+    background: var(--surface); padding: 2px 8px; border-radius: 100px;
+    border: 1px solid var(--border);
+  }
+  .partition-files {
+    margin-left: 20px; font-size: 0.76rem; color: var(--text-2);
+    font-family: 'JetBrains Mono', monospace; line-height: 1.8;
+  }
+</style>
+</head>
+<body>
+<nav>
+  <a href="../index.html" class="logo"><span class="logo-icon">&#9874;</span> DataForge</a>
+  <div class="nav-links"><a href="../index.html">All Tools</a><a href="/docs" target="_blank" rel="noreferrer" class="nav-docs">API Docs</a></div>
+</nav>
+
+<div class="tool-page">
+  <div class="tool-header">
+    <a href="../index.html" class="back-link">&larr; Back to tools</a>
+    <h1>&#129523; Lakehouse Organizer</h1>
+    <p>Simulated S3 lakehouse &mdash; ingest files, auto-partition, convert to Parquet, and catalog metadata.</p>
+  </div>
+
+  <div class="info-box">
+    <strong>What this tool does:</strong> Simulate S3 lakehouse management &mdash; ingest files, auto-partition by date and source, convert to Parquet format, and catalog metadata.
+    <ul>
+      <li>Upload files to ingest into the lakehouse with automatic partitioning</li>
+      <li>Browse the file catalog and view partition structure</li>
+      <li>Track storage stats, format breakdown, and conversion rates</li>
+      <li>Files are organized by date/source partitions for efficient querying</li>
+    </ul>
+  </div>
+
+  <!-- File Upload -->
+  <div class="upload-zone" id="drop-zone">
+    <div class="upload-icon">&#128196;</div>
+    <p>Drop a file here to ingest into the lakehouse, or click to browse</p>
+    <div class="file-name" id="file-name"></div>
+    <input type="file" id="file-input" accept=".csv,.xlsx,.xls,.tsv,.json,.parquet" hidden>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn btn-primary" id="ingest-btn">Ingest File</button>
+    <button class="btn btn-secondary" id="catalog-btn">View Catalog</button>
+    <button class="btn btn-secondary" id="partitions-btn">View Partitions</button>
+    <button class="btn btn-secondary" id="stats-btn">Lakehouse Stats</button>
+  </div>
+
+  <div class="loading" id="loading"><div class="spinner"></div><p>Processing...</p></div>
+
+  <div class="results-panel" id="results">
+    <div class="results-header">
+      <h3 id="results-title">Results</h3>
+      <span class="results-status status-info" id="results-status"></span>
+    </div>
+    <div class="results-body">
+      <div class="stats-row" id="stats-row"></div>
+      <div id="content"></div>
+      <details style="margin-top:16px">
+        <summary style="cursor:pointer;font-size:0.82rem;color:var(--text-3);font-weight:600">Raw JSON</summary>
+        <pre id="raw-json"></pre>
+      </details>
+    </div>
+  </div>
+</div>
+
+<footer><p>Built by <strong>Shubhangi Mittal</strong> &middot; DataForge</p></footer>
+
+<script src="/env.js"></script>
+<script src="../js/config.js?v=5"></script>
+<script>
+setupFileUpload('drop-zone', 'file-input', 'file-name');
+const fileInput = document.getElementById('file-input');
+
+/* ── Ingest File ───────────────────────────────────── */
+document.getElementById('ingest-btn').addEventListener('click', async () => {
+  if (!fileInput.files.length) return alert('Please select a file first.');
+  hideResults(); showLoading();
+  try {
+    const { data } = await apiUpload('/api/lakehouse/ingest', fileInput.files[0], { source: 'web_upload' });
+    hideLoading();
+    const e = data.entry || data;
+    document.getElementById('results-title').textContent = 'Ingest Result';
+    document.getElementById('results-status').textContent = 'INGESTED';
+    document.getElementById('results-status').className = 'results-status status-pass';
+    document.getElementById('stats-row').innerHTML =
+      '<div class="stat-card"><div class="stat-val">' + escapeHtml(e.original_filename || '-') + '</div><div class="stat-lbl">Original File</div></div>' +
+      '<div class="stat-card"><div class="stat-val">' + escapeHtml(e.target_filename || '-') + '</div><div class="stat-lbl">Target File</div></div>' +
+      '<div class="stat-card"><div class="stat-val">' + escapeHtml(e.partition_path || '-') + '</div><div class="stat-lbl">Partition</div></div>';
+    document.getElementById('content').innerHTML = '';
+    document.getElementById('raw-json').textContent = JSON.stringify(data, null, 2);
+    showResults();
+  } catch (e) { hideLoading(); alert('Error: ' + e.message); }
+});
+
+/* ── View Catalog ──────────────────────────────────── */
+document.getElementById('catalog-btn').addEventListener('click', async () => {
+  hideResults(); showLoading();
+  try {
+    const d = await apiGet('/api/lakehouse/catalog');
+    hideLoading();
+    document.getElementById('results-title').textContent = 'File Catalog';
+    document.getElementById('results-status').textContent = d.count + ' files';
+    document.getElementById('results-status').className = 'results-status status-info';
+    document.getElementById('stats-row').innerHTML = '';
+
+    let h = '';
+    if (d.files && d.files.length) {
+      const keys = Object.keys(d.files[0]);
+      h += '<div style="overflow-x:auto"><table class="errors-table"><thead><tr>';
+      keys.forEach(k => { h += '<th>' + escapeHtml(k) + '</th>'; });
+      h += '</tr></thead><tbody>';
+      d.files.forEach(f => {
+        h += '<tr>';
+        keys.forEach(k => { h += '<td>' + escapeHtml(String(f[k] != null ? f[k] : '')) + '</td>'; });
+        h += '</tr>';
+      });
+      h += '</tbody></table></div>';
+    } else {
+      h = '<p style="color:var(--text-3)">No files in the catalog yet. Ingest a file first.</p>';
+    }
+    document.getElementById('content').innerHTML = h;
+    document.getElementById('raw-json').textContent = JSON.stringify(d, null, 2);
+    showResults();
+  } catch (e) { hideLoading(); alert('Error: ' + e.message); }
+});
+
+/* ── View Partitions ───────────────────────────────── */
+document.getElementById('partitions-btn').addEventListener('click', async () => {
+  hideResults(); showLoading();
+  try {
+    const d = await apiGet('/api/lakehouse/partitions');
+    hideLoading();
+    document.getElementById('results-title').textContent = 'Partitions';
+    document.getElementById('results-status').textContent = d.count + ' partitions';
+    document.getElementById('results-status').className = 'results-status status-info';
+    document.getElementById('stats-row').innerHTML = '';
+
+    let h = '';
+    if (d.partitions && d.partitions.length) {
+      h += '<ul class="partition-tree">';
+      d.partitions.forEach(p => {
+        h += '<li>';
+        h += '<div class="partition-path"><span>&#128193; ' + escapeHtml(p.path) + '</span><span class="count">' + p.file_count + ' files</span></div>';
+        if (p.files && p.files.length) {
+          h += '<div class="partition-files">';
+          p.files.forEach(f => { h += '&#128196; ' + escapeHtml(f) + '<br>'; });
+          h += '</div>';
+        }
+        h += '</li>';
+      });
+      h += '</ul>';
+    } else {
+      h = '<p style="color:var(--text-3)">No partitions yet.</p>';
+    }
+    document.getElementById('content').innerHTML = h;
+    document.getElementById('raw-json').textContent = JSON.stringify(d, null, 2);
+    showResults();
+  } catch (e) { hideLoading(); alert('Error: ' + e.message); }
+});
+
+/* ── Lakehouse Stats ───────────────────────────────── */
+document.getElementById('stats-btn').addEventListener('click', async () => {
+  hideResults(); showLoading();
+  try {
+    const d = await apiGet('/api/lakehouse/stats');
+    hideLoading();
+    document.getElementById('results-title').textContent = 'Lakehouse Stats';
+    document.getElementById('results-status').textContent = 'OVERVIEW';
+    document.getElementById('results-status').className = 'results-status status-info';
+
+    document.getElementById('stats-row').innerHTML =
+      '<div class="stat-card"><div class="stat-val">' + (d.total_files || 0) + '</div><div class="stat-lbl">Total Files</div></div>' +
+      '<div class="stat-card"><div class="stat-val">' + (d.total_size_mb != null ? d.total_size_mb.toFixed(2) + ' MB' : (d.total_size_bytes || 0) + ' B') + '</div><div class="stat-lbl">Total Size</div></div>' +
+      '<div class="stat-card"><div class="stat-val">' + (d.total_partitions || 0) + '</div><div class="stat-lbl">Partitions</div></div>' +
+      '<div class="stat-card"><div class="stat-val">' + (d.conversion_rate != null ? (d.conversion_rate * 100).toFixed(0) + '%' : '-') + '</div><div class="stat-lbl">Conversion Rate</div></div>';
+
+    let h = '';
+    // Sources
+    if (d.unique_sources && d.unique_sources.length) {
+      h += '<h4 style="font-size:0.88rem;margin:16px 0 8px;font-weight:600">Sources</h4>';
+      h += '<div style="display:flex;flex-wrap:wrap;gap:6px">';
+      d.unique_sources.forEach(s => { h += '<span class="pill pill-cyan">' + escapeHtml(s) + '</span>'; });
+      h += '</div>';
+    }
+    // Format breakdown
+    if (d.format_breakdown && Object.keys(d.format_breakdown).length) {
+      h += '<h4 style="font-size:0.88rem;margin:20px 0 8px;font-weight:600">Format Breakdown</h4>';
+      h += '<div class="bar-chart">';
+      const maxVal = Math.max(...Object.values(d.format_breakdown));
+      Object.entries(d.format_breakdown).forEach(([fmt, count]) => {
+        const pct = maxVal > 0 ? (count / maxVal * 100) : 0;
+        h += '<div class="bar-row">' +
+          '<div class="bar-label">' + escapeHtml(fmt) + '</div>' +
+          '<div class="bar-track"><div class="bar-fill" style="width:' + pct + '%"></div></div>' +
+          '<div class="bar-value">' + count + '</div></div>';
+      });
+      h += '</div>';
+    }
+    document.getElementById('content').innerHTML = h;
+    document.getElementById('raw-json').textContent = JSON.stringify(d, null, 2);
+    showResults();
+  } catch (e) { hideLoading(); alert('Error: ' + e.message); }
+});
+</script>
+</body>
+</html>

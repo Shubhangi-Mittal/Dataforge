@@ -1,0 +1,8 @@
+{
+  "name": "dataforge",
+  "version": "1.0.0",
+  "scripts": {
+    "generate-env": "node scripts/generate-env.js",
+    "build": "npm run generate-env && echo \"build complete\""
+  }
+}

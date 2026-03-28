@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Log Anomaly Detector &mdash; DataForge</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/style.css">
+<style>
+  #ts-canvas {
+    width: 100%; height: 260px;
+    border: 1px solid var(--border); border-radius: 12px;
+    background: #0d0d1a; margin-top: 16px;
+  }
+  .anomaly-badge {
+    display: inline-block; padding: 2px 10px; border-radius: 100px;
+    font-size: 0.72rem; font-weight: 700;
+  }
+  .anomaly-badge.yes { background: rgba(255,107,107,0.15); color: var(--red); }
+  .anomaly-badge.no { background: rgba(0,184,148,0.12); color: var(--green); }
+</style>
+</head>
+<body>
+<nav>
+  <a href="../index.html" class="logo"><span class="logo-icon">&#9874;</span> DataForge</a>
+  <div class="nav-links"><a href="../index.html">All Tools</a><a href="/docs" target="_blank" rel="noreferrer" class="nav-docs">API Docs</a></div>
+</nav>
+
+<div class="tool-page">
+  <div class="tool-header">
+    <a href="../index.html" class="back-link">&larr; Back to tools</a>
+    <h1>&#128269; Log Anomaly Detector</h1>
+    <p>Detect anomalies in metric data using statistical methods.</p>
+  </div>
+
+  <div class="info-box">
+    <strong>What this tool does:</strong> Ingest real metric data and detect anomalies using z-score, IQR, and moving average methods. Supports batch ingestion and real-time alerting.
+    <ul>
+      <li>Paste comma-separated numeric values or generate sample data with injected anomalies</li>
+      <li>Detect anomalies using three statistical methods: z-score, IQR, and moving average</li>
+      <li>Visualize time series data with anomaly points highlighted in red</li>
+      <li>Ingest data into named streams for ongoing monitoring and alert tracking</li>
+    </ul>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+    <div class="form-group" style="margin-bottom:0">
+      <label>Stream Name</label>
+      <input type="text" id="stream-name" placeholder="e.g. server_cpu" value="web_server">
+    </div>
+    <div class="form-group" style="margin-bottom:0">
+      <label>Metric Name</label>
+      <input type="text" id="metric-name" placeholder="e.g. cpu_usage" value="response_time_ms">
+    </div>
+  </div>
+
+  <div class="form-group">
+    <label>Metric Values (comma-separated numbers)</label>
+    <textarea id="values-input" rows="5" placeholder="50.1, 48.3, 52.0, 90.5, 49.2, 51.8, 47.6, 120.3, 50.0, 49.5 ...">50.1, 48.3, 52.0, 49.8, 51.2, 47.6, 50.5, 48.9, 90.5, 49.2, 51.8, 47.6, 50.0, 49.5, 52.3, 48.1, 120.3, 50.0, 49.5, 51.0, 48.7, 50.2, 49.8, 51.5, 47.9, 50.8, 49.1, 200.0, 50.3, 48.6</textarea>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn btn-primary" id="detect-btn">Detect Anomalies</button>
+    <button class="btn btn-secondary" id="ingest-btn">Ingest &amp; Monitor</button>
+    <button class="btn btn-secondary" id="sample-btn">Generate Sample</button>
+    <button class="btn btn-secondary" id="alerts-btn">View Alerts</button>
+  </div>
+
+  <div class="loading" id="loading"><div class="spinner"></div><p>Analyzing data...</p></div>
+
+  <div class="results-panel" id="results">
+    <div class="results-header">
+      <h3 id="results-title">Anomaly Detection</h3>
+      <span class="results-status status-info" id="results-status"></span>
+    </div>
+    <div class="results-body">
+      <div class="stats-row" id="stats-row"></div>
+      <canvas id="ts-canvas"></canvas>
+      <div id="content"></div>
+      <details style="margin-top:16px">
+        <summary style="cursor:pointer;font-size:0.82rem;color:var(--text-3);font-weight:600">Raw JSON</summary>
+        <pre id="raw-json"></pre>
+      </details>
+    </div>
+  </div>
+</div>
+
+<footer><p>Built by <strong>Shubhangi Mittal</strong> &middot; DataForge</p></footer>
+
+<script src="/env.js"></script>
+<script src="../js/config.js?v=5"></script>
+<script>
+const valuesInput = document.getElementById('values-input');
+
+function parseValues() {
+  return valuesInput.value.split(',')
+    .map(v => parseFloat(v.trim()))
+    .filter(v => !isNaN(v));
+}
+
+/* ── Draw Time Series Chart ────────────────────────── */
+function drawChart(values, anomalyIndices) {
+  const canvas = document.getElementById('ts-canvas');
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  const w = rect.width || 800;
+  const h = 260;
+
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  canvas.style.width = w + 'px';
+  canvas.style.height = h + 'px';
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, w, h);
+
+  if (!values.length) return;
+
+  const padL = 60, padR = 20, padT = 20, padB = 30;
+  const chartW = w - padL - padR;
+  const chartH = h - padT - padB;
+
+  const minV = Math.min(...values);
+  const maxV = Math.max(...values);
+  const range = maxV - minV || 1;
+
+  function xPos(i) { return padL + (i / (values.length - 1)) * chartW; }
+  function yPos(v) { return padT + chartH - ((v - minV) / range) * chartH; }
+
+  // Grid lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = padT + (chartH / 4) * i;
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
+    const val = maxV - (range / 4) * i;
+    ctx.fillStyle = '#6a6a80';
+    ctx.font = '10px "JetBrains Mono", monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(val.toFixed(1), padL - 8, y + 3);
+  }
+
+  // Line
+  ctx.beginPath();
+  ctx.strokeStyle = 'rgba(108,92,231,0.8)';
+  ctx.lineWidth = 2;
+  values.forEach((v, i) => {
+    const x = xPos(i), y = yPos(v);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // Fill under line
+  ctx.beginPath();
+  values.forEach((v, i) => {
+    const x = xPos(i), y = yPos(v);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.lineTo(xPos(values.length - 1), padT + chartH);
+  ctx.lineTo(xPos(0), padT + chartH);
+  ctx.closePath();
+  const grad = ctx.createLinearGradient(0, padT, 0, padT + chartH);
+  grad.addColorStop(0, 'rgba(108,92,231,0.15)');
+  grad.addColorStop(1, 'rgba(108,92,231,0)');
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Normal points
+  values.forEach((v, i) => {
+    if (anomalyIndices && anomalyIndices.has(i)) return;
+    const x = xPos(i), y = yPos(v);
+    ctx.beginPath();
+    ctx.arc(x, y, 3, 0, Math.PI * 2);
+    ctx.fillStyle = '#6c5ce7';
+    ctx.fill();
+  });
+
+  // Anomaly points
+  if (anomalyIndices) {
+    anomalyIndices.forEach(i => {
+      if (i >= values.length) return;
+      const x = xPos(i), y = yPos(values[i]);
+      ctx.beginPath();
+      ctx.arc(x, y, 6, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,107,107,0.3)';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, Math.PI * 2);
+      ctx.fillStyle = '#ff6b6b';
+      ctx.fill();
+    });
+  }
+
+  // X axis labels
+  ctx.fillStyle = '#6a6a80';
+  ctx.font = '9px "JetBrains Mono", monospace';
+  ctx.textAlign = 'center';
+  const step = Math.max(1, Math.floor(values.length / 10));
+  for (let i = 0; i < values.length; i += step) {
+    ctx.fillText(i, xPos(i), h - 8);
+  }
+}
+
+/* ── Detect Anomalies ──────────────────────────────── */
+document.getElementById('detect-btn').addEventListener('click', async () => {
+  const values = parseValues();
+  if (values.length < 3) return alert('Please enter at least 3 numeric values.');
+
+  hideResults(); showLoading();
+  try {
+    const { data } = await apiPost('/api/log-anomaly/detect?method=all', values);
+    hideLoading();
+    document.getElementById('results-title').textContent = 'Anomaly Detection';
+    document.getElementById('results-status').textContent = data.total_anomalies + ' anomalies';
+    document.getElementById('results-status').className = 'results-status ' + (data.total_anomalies > 0 ? 'status-fail' : 'status-pass');
+
+    document.getElementById('stats-row').innerHTML =
+      '<div class="stat-card"><div class="stat-val">' + data.total_values + '</div><div class="stat-lbl">Total Values</div></div>' +
+      '<div class="stat-card"><div class="stat-val">' + data.total_anomalies + '</div><div class="stat-lbl">Anomalies</div></div>' +
+      '<div class="stat-card"><div class="stat-val">' + (data.methods.z_score ? data.methods.z_score.length : 0) + '</div><div class="stat-lbl">Z-Score</div></div>' +
+      '<div class="stat-card"><div class="stat-val">' + (data.methods.iqr ? data.methods.iqr.length : 0) + '</div><div class="stat-lbl">IQR</div></div>' +
+      '<div class="stat-card"><div class="stat-val">' + (data.methods.moving_average ? data.methods.moving_average.length : 0) + '</div><div class="stat-lbl">Moving Avg</div></div>';
+
+    // Collect all anomaly indices
+    const anomalyIndices = new Set();
+    Object.values(data.methods || {}).forEach(indices => {
+      if (Array.isArray(indices)) indices.forEach(i => anomalyIndices.add(i));
+    });
+
+    drawChart(values, anomalyIndices);
+
+    // Anomaly table
+    let h = '';
+    if (anomalyIndices.size > 0) {
+      h += '<h4 style="font-size:0.88rem;margin:20px 0 8px;font-weight:600">Anomalous Values</h4>';
+      h += '<div style="overflow-x:auto"><table class="errors-table"><thead><tr><th>Index</th><th>Value</th><th>Z-Score</th><th>IQR</th><th>Moving Avg</th></tr></thead><tbody>';
+      const sorted = [...anomalyIndices].sort((a, b) => a - b);
+      sorted.forEach(idx => {
+        const zs = (data.methods.z_score || []).includes(idx);
+        const iq = (data.methods.iqr || []).includes(idx);
+        const ma = (data.methods.moving_average || []).includes(idx);
+        h += '<tr><td>' + idx + '</td><td style="font-family:\'JetBrains Mono\',monospace;font-weight:600;color:var(--red)">' + values[idx] + '</td>';
+        h += '<td><span class="anomaly-badge ' + (zs ? 'yes' : 'no') + '">' + (zs ? 'ANOMALY' : 'OK') + '</span></td>';
+        h += '<td><span class="anomaly-badge ' + (iq ? 'yes' : 'no') + '">' + (iq ? 'ANOMALY' : 'OK') + '</span></td>';
+        h += '<td><span class="anomaly-badge ' + (ma ? 'yes' : 'no') + '">' + (ma ? 'ANOMALY' : 'OK') + '</span></td></tr>';
+      });
+      h += '</tbody></table></div>';
+    } else {
+      h = '<p style="color:var(--green);font-weight:600;margin-top:16px">No anomalies detected &mdash; all values are within normal range.</p>';
+    }
+    document.getElementById('content').innerHTML = h;
+    document.getElementById('raw-json').textContent = JSON.stringify(data, null, 2);
+    showResults();
+  } catch (e) { hideLoading(); alert('Error: ' + e.message); }
+});
+
+/* ── Ingest & Monitor ──────────────────────────────── */
+document.getElementById('ingest-btn').addEventListener('click', async () => {
+  const values = parseValues();
+  const stream = document.getElementById('stream-name').value.trim();
+  const metric = document.getElementById('metric-name').value.trim();
+  if (!values.length) return alert('Enter some values first.');
+  if (!stream || !metric) return alert('Please provide stream and metric names.');
+
+  hideResults(); showLoading();
+  try {
+    const { data } = await apiPost('/api/log-anomaly/ingest-batch', { stream, metric, values });
+    hideLoading();
+    document.getElementById('results-title').textContent = 'Ingestion Result';
+    document.getElementById('results-status').textContent = 'INGESTED';
+    document.getElementById('results-status').className = 'results-status status-pass';
+    document.getElementById('stats-row').innerHTML = '';
+    drawChart(values, null);
+    document.getElementById('content').innerHTML =
+      '<p style="color:var(--green);font-weight:600">Successfully ingested ' + values.length + ' values into stream "' + escapeHtml(stream) + '" / metric "' + escapeHtml(metric) + '".</p>';
+    document.getElementById('raw-json').textContent = JSON.stringify(data, null, 2);
+    showResults();
+  } catch (e) { hideLoading(); alert('Error: ' + e.message); }
+});
+
+/* ── Generate Sample ───────────────────────────────── */
+document.getElementById('sample-btn').addEventListener('click', async () => {
+  showLoading();
+  try {
+    const d = await apiGet('/api/log-anomaly/generate-sample?n=100&anomaly_pct=8');
+    hideLoading();
+    if (d.values && d.values.length) {
+      valuesInput.value = d.values.map(v => v.toFixed(2)).join(', ');
+      drawChart(d.values, null);
+    }
+  } catch (e) { hideLoading(); alert('Error: ' + e.message); }
+});
+
+/* ── View Alerts ───────────────────────────────────── */
+document.getElementById('alerts-btn').addEventListener('click', async () => {
+  hideResults(); showLoading();
+  try {
+    const d = await apiGet('/api/log-anomaly/alerts');
+    hideLoading();
+    document.getElementById('results-title').textContent = 'Alerts';
+    document.getElementById('results-status').textContent = d.count + ' alerts';
+    document.getElementById('results-status').className = 'results-status ' + (d.count > 0 ? 'status-fail' : 'status-pass');
+    document.getElementById('stats-row').innerHTML = '';
+    // Hide chart for alerts view
+    document.getElementById('ts-canvas').style.display = 'none';
+
+    let h = '';
+    if (d.alerts && d.alerts.length) {
+      h += '<div style="overflow-x:auto"><table class="errors-table"><thead><tr>';
+      const keys = Object.keys(d.alerts[0]);
+      keys.forEach(k => { h += '<th>' + escapeHtml(k) + '</th>'; });
+      h += '</tr></thead><tbody>';
+      d.alerts.forEach(a => {
+        h += '<tr>';
+        keys.forEach(k => { h += '<td>' + escapeHtml(String(a[k] != null ? a[k] : '')) + '</td>'; });
+        h += '</tr>';
+      });
+      h += '</tbody></table></div>';
+    } else {
+      h = '<p style="color:var(--green);font-weight:600">No alerts. All clear.</p>';
+    }
+    document.getElementById('content').innerHTML = h;
+    document.getElementById('raw-json').textContent = JSON.stringify(d, null, 2);
+    showResults();
+  } catch (e) { hideLoading(); alert('Error: ' + e.message); }
+});
+
+// Show chart again when other buttons are clicked
+['detect-btn', 'ingest-btn', 'sample-btn'].forEach(id => {
+  document.getElementById(id).addEventListener('click', () => {
+    document.getElementById('ts-canvas').style.display = '';
+  });
+});
+
+// Draw initial chart
+drawChart(parseValues(), null);
+</script>
+</body>
+</html>

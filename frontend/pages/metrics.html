@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Metric Registry &mdash; DataForge</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/style.css">
+<style>
+  .metric-card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 24px;
+    transition: all var(--transition); border-left: 3px solid var(--accent);
+  }
+  .metric-card:hover { border-color: var(--accent); transform: translateY(-3px); box-shadow: var(--shadow); }
+  .metric-card h4 {
+    font-family: 'Playfair Display', serif; font-size: 1.05rem;
+    font-weight: 600; margin-bottom: 6px; color: var(--text-1);
+  }
+  .metric-card .metric-id {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.72rem;
+    color: var(--text-3); margin-bottom: 10px;
+  }
+  .metric-card .metric-desc { font-size: 0.82rem; color: var(--text-2); margin-bottom: 12px; line-height: 1.6; }
+  .metric-card .metric-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.78rem; }
+  .metric-card .metric-meta dt { color: var(--text-3); text-transform: uppercase; font-size: 0.68rem; letter-spacing: 0.08em; font-weight: 600; }
+  .metric-card .metric-meta dd { color: var(--text-2); margin: 0 0 8px 0; font-family: 'JetBrains Mono', monospace; font-size: 0.76rem; word-break: break-all; }
+  .metric-card .metric-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+  .metrics-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 16px; }
+  .category-pills { display: flex; flex-wrap: wrap; gap: 8px; }
+  .category-pill {
+    background: rgba(108,92,231,0.08); border: 1px solid rgba(108,92,231,0.2);
+    color: var(--accent-2); padding: 6px 16px; border-radius: 100px;
+    font-size: 0.8rem; font-weight: 600;
+  }
+  .category-pill .cat-count {
+    background: var(--accent); color: white; padding: 1px 8px;
+    border-radius: 100px; font-size: 0.7rem; margin-left: 6px;
+  }
+</style>
+</head>
+<body>
+<nav>
+  <a href="../index.html" class="logo"><span class="logo-icon">&#9874;</span> DataForge</a>
+  <div class="nav-links"><a href="../index.html">All Tools</a><a href="/docs" target="_blank" rel="noreferrer" class="nav-docs">API Docs</a></div>
+</nav>
+
+<div class="tool-page">
+  <div class="tool-header">
+    <a href="../index.html" class="back-link">&larr; Back to tools</a>
+    <h1>&#128203; Metric Registry</h1>
+    <p>Centralized business metric definitions &mdash; formulas, owners, SQL, and data lineage.</p>
+  </div>
+
+  <div class="info-box">
+    <strong>What this tool does:</strong> Centralized business metric definitions &mdash; create, browse, and manage metrics with formulas, owners, SQL definitions, and data lineage tracking.
+    <ul>
+      <li>Define metrics with formula expressions and SQL definitions</li>
+      <li>Assign owners, categories, units, and tags for organization</li>
+      <li>Browse all metrics as styled cards or filter by category</li>
+      <li>Maintain a single source of truth for business metric definitions</li>
+    </ul>
+  </div>
+
+  <!-- Create Metric Form -->
+  <details open style="margin-bottom:28px">
+    <summary style="cursor:pointer;font-size:0.92rem;font-weight:600;color:var(--accent-2);margin-bottom:12px">Create New Metric</summary>
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:24px;margin-top:12px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div class="form-group" style="margin-bottom:0">
+          <label>Metric ID</label>
+          <input type="text" id="m-id" placeholder="e.g. monthly_revenue">
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label>Name</label>
+          <input type="text" id="m-name" placeholder="e.g. Monthly Revenue">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Description</label>
+        <input type="text" id="m-desc" placeholder="Total revenue generated per calendar month">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div class="form-group" style="margin-bottom:0">
+          <label>Formula</label>
+          <input type="text" id="m-formula" placeholder="SUM(order_total)">
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label>Owner</label>
+          <input type="text" id="m-owner" placeholder="e.g. data-team">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>SQL Definition</label>
+        <textarea id="m-sql" rows="3" placeholder="SELECT SUM(order_total) FROM orders WHERE ..."></textarea>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+        <div class="form-group" style="margin-bottom:0">
+          <label>Category</label>
+          <input type="text" id="m-category" placeholder="e.g. revenue">
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label>Unit</label>
+          <input type="text" id="m-unit" placeholder="e.g. USD">
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label>Tags (comma-separated)</label>
+          <input type="text" id="m-tags" placeholder="finance, monthly, kpi">
+        </div>
+      </div>
+      <div class="btn-row" style="margin-top:16px">
+        <button class="btn btn-primary" id="create-btn">Create Metric</button>
+      </div>
+    </div>
+  </details>
+
+  <div class="btn-row">
+    <button class="btn btn-primary" id="list-btn">List All Metrics</button>
+    <button class="btn btn-secondary" id="cat-btn">Categories</button>
+  </div>
+
+  <div class="loading" id="loading"><div class="spinner"></div><p>Loading...</p></div>
+
+  <div class="results-panel" id="results">
+    <div class="results-header">
+      <h3 id="results-title">Results</h3>
+      <span class="results-status status-info" id="results-status"></span>
+    </div>
+    <div class="results-body">
+      <div id="content"></div>
+      <details style="margin-top:16px">
+        <summary style="cursor:pointer;font-size:0.82rem;color:var(--text-3);font-weight:600">Raw JSON</summary>
+        <pre id="raw-json"></pre>
+      </details>
+    </div>
+  </div>
+</div>
+
+<footer><p>Built by <strong>Shubhangi Mittal</strong> &middot; DataForge</p></footer>
+
+<script src="/env.js"></script>
+<script src="../js/config.js?v=5"></script>
+<script>
+
+/* ── Create Metric ─────────────────────────────────── */
+document.getElementById('create-btn').addEventListener('click', async () => {
+  const id = document.getElementById('m-id').value.trim();
+  const name = document.getElementById('m-name').value.trim();
+  const description = document.getElementById('m-desc').value.trim();
+  const formula = document.getElementById('m-formula').value.trim();
+  const sql_definition = document.getElementById('m-sql').value.trim();
+  const owner = document.getElementById('m-owner').value.trim();
+  const category = document.getElementById('m-category').value.trim();
+  const unit = document.getElementById('m-unit').value.trim();
+  const tagsRaw = document.getElementById('m-tags').value.trim();
+  const tags = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : [];
+
+  if (!id || !name) return alert('Please provide at least a metric ID and name.');
+
+  hideResults(); showLoading();
+  try {
+    const { data } = await apiPost('/api/metrics/', {
+      id, name, description, formula, sql_definition, owner, category, unit, tags
+    });
+    hideLoading();
+    document.getElementById('results-title').textContent = 'Metric Created';
+    document.getElementById('results-status').textContent = 'CREATED';
+    document.getElementById('results-status').className = 'results-status status-pass';
+    document.getElementById('content').innerHTML =
+      '<p style="color:var(--green);font-weight:600">Metric "' + escapeHtml(name) + '" created successfully.</p>';
+    document.getElementById('raw-json').textContent = JSON.stringify(data, null, 2);
+    showResults();
+  } catch (e) { hideLoading(); alert('Error: ' + e.message); }
+});
+
+/* ── List All Metrics ──────────────────────────────── */
+document.getElementById('list-btn').addEventListener('click', async () => {
+  hideResults(); showLoading();
+  try {
+    const d = await apiGet('/api/metrics/');
+    hideLoading();
+    document.getElementById('results-title').textContent = 'All Metrics';
+    document.getElementById('results-status').textContent = d.count + ' metrics';
+    document.getElementById('results-status').className = 'results-status status-info';
+
+    let h = '';
+    if (d.metrics && d.metrics.length) {
+      h += '<div class="metrics-grid">';
+      d.metrics.forEach((m, i) => {
+        h += '<div class="metric-card" style="animation:fadeUp 0.4s ease-out ' + (i * 0.06) + 's both">';
+        h += '<h4>' + escapeHtml(m.name || m.id) + '</h4>';
+        h += '<div class="metric-id">' + escapeHtml(m.id) + '</div>';
+        if (m.description) h += '<div class="metric-desc">' + escapeHtml(m.description) + '</div>';
+        h += '<dl class="metric-meta">';
+        if (m.formula) { h += '<dt>Formula</dt><dd>' + escapeHtml(m.formula) + '</dd>'; }
+        if (m.owner) { h += '<dt>Owner</dt><dd>' + escapeHtml(m.owner) + '</dd>'; }
+        if (m.category) { h += '<dt>Category</dt><dd>' + escapeHtml(m.category) + '</dd>'; }
+        if (m.unit) { h += '<dt>Unit</dt><dd>' + escapeHtml(m.unit) + '</dd>'; }
+        if (m.sql_definition) { h += '<dt>SQL</dt><dd style="grid-column:1/-1;font-size:0.72rem">' + escapeHtml(m.sql_definition) + '</dd>'; }
+        h += '</dl>';
+        if (m.tags && m.tags.length) {
+          h += '<div class="metric-tags">';
+          m.tags.forEach(t => { h += '<span class="pill pill-blue">' + escapeHtml(t) + '</span>'; });
+          h += '</div>';
+        }
+        h += '</div>';
+      });
+      h += '</div>';
+    } else {
+      h = '<p style="color:var(--text-3)">No metrics defined yet. Create one above.</p>';
+    }
+    document.getElementById('content').innerHTML = h;
+    document.getElementById('raw-json').textContent = JSON.stringify(d, null, 2);
+    showResults();
+  } catch (e) { hideLoading(); alert('Error: ' + e.message); }
+});
+
+/* ── Categories ────────────────────────────────────── */
+document.getElementById('cat-btn').addEventListener('click', async () => {
+  hideResults(); showLoading();
+  try {
+    const d = await apiGet('/api/metrics/categories/list');
+    hideLoading();
+    document.getElementById('results-title').textContent = 'Categories';
+    const cats = d.categories || {};
+    const count = Object.keys(cats).length;
+    document.getElementById('results-status').textContent = count + ' categories';
+    document.getElementById('results-status').className = 'results-status status-info';
+
+    let h = '';
+    if (count) {
+      h += '<div class="category-pills">';
+      Object.entries(cats).forEach(([cat, metrics]) => {
+        const n = Array.isArray(metrics) ? metrics.length : metrics;
+        h += '<span class="category-pill">' + escapeHtml(cat) + '<span class="cat-count">' + n + '</span></span>';
+      });
+      h += '</div>';
+    } else {
+      h = '<p style="color:var(--text-3)">No categories yet.</p>';
+    }
+    document.getElementById('content').innerHTML = h;
+    document.getElementById('raw-json').textContent = JSON.stringify(d, null, 2);
+    showResults();
+  } catch (e) { hideLoading(); alert('Error: ' + e.message); }
+});
+</script>
+</body>
+</html>
