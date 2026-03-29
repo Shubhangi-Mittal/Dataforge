@@ -5,10 +5,13 @@ Shared SQLite persistence layer for DataForge.
 import json
 import math
 import sqlite3
+from datetime import date, datetime, time, timedelta
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Optional
 
 import numpy as np
+import pandas as pd
 
 
 DB_PATH = Path(__file__).resolve().parents[1] / "dataforge_platform.db"
@@ -21,6 +24,20 @@ def get_connection() -> sqlite3.Connection:
 
 
 def sanitize_for_json(obj: Any) -> Any:
+    if obj is None:
+        return None
+    if obj is pd.NA:
+        return None
+    if isinstance(obj, Decimal):
+        return float(obj)
+    if isinstance(obj, (datetime, date, time)):
+        return obj.isoformat()
+    if isinstance(obj, timedelta):
+        return obj.total_seconds()
+    if isinstance(obj, (pd.Timestamp, pd.Timedelta)):
+        return obj.isoformat() if hasattr(obj, "isoformat") else str(obj)
+    if isinstance(obj, (np.datetime64,)):
+        return str(obj)
     if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
         return None
     if isinstance(obj, (np.bool_,)):
@@ -30,12 +47,20 @@ def sanitize_for_json(obj: Any) -> Any:
     if isinstance(obj, (np.floating,)):
         value = float(obj)
         return None if (math.isnan(value) or math.isinf(value)) else value
+    if isinstance(obj, np.generic):
+        return sanitize_for_json(obj.item())
     if isinstance(obj, np.ndarray):
+        return [sanitize_for_json(item) for item in obj.tolist()]
+    if isinstance(obj, pd.Series):
+        return [sanitize_for_json(item) for item in obj.tolist()]
+    if isinstance(obj, pd.Index):
         return [sanitize_for_json(item) for item in obj.tolist()]
     if isinstance(obj, dict):
         return {key: sanitize_for_json(value) for key, value in obj.items()}
-    if isinstance(obj, list):
+    if isinstance(obj, (list, tuple, set)):
         return [sanitize_for_json(value) for value in obj]
+    if isinstance(obj, pd.DataFrame):
+        return sanitize_for_json(obj.to_dict(orient="records"))
     return obj
 
 
