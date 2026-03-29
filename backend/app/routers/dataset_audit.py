@@ -124,7 +124,7 @@ async def analyze_dataset(file: UploadFile = File(...)):
         )
 
     audit_report["report_id"] = saved["id"]
-    return audit_report
+    return storage.sanitize_for_json(audit_report)
 
 
 @router.get("/history")

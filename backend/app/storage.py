@@ -20,7 +20,7 @@ def get_connection() -> sqlite3.Connection:
     return conn
 
 
-def _sanitize_for_json(obj: Any) -> Any:
+def sanitize_for_json(obj: Any) -> Any:
     if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
         return None
     if isinstance(obj, (np.bool_,)):
@@ -31,16 +31,16 @@ def _sanitize_for_json(obj: Any) -> Any:
         value = float(obj)
         return None if (math.isnan(value) or math.isinf(value)) else value
     if isinstance(obj, np.ndarray):
-        return [_sanitize_for_json(item) for item in obj.tolist()]
+        return [sanitize_for_json(item) for item in obj.tolist()]
     if isinstance(obj, dict):
-        return {key: _sanitize_for_json(value) for key, value in obj.items()}
+        return {key: sanitize_for_json(value) for key, value in obj.items()}
     if isinstance(obj, list):
-        return [_sanitize_for_json(value) for value in obj]
+        return [sanitize_for_json(value) for value in obj]
     return obj
 
 
 def _json_dumps(data: Any) -> str:
-    return json.dumps(_sanitize_for_json(data))
+    return json.dumps(sanitize_for_json(data))
 
 
 def init_db() -> None:
