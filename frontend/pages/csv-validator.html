@@ -48,6 +48,8 @@
 
   <div class="btn-row">
     <button class="btn btn-primary" id="validate-btn" disabled>Validate File</button>
+    <button class="btn btn-secondary" id="demo-btn">Use Demo File</button>
+    <button class="btn btn-secondary" id="export-btn" disabled>Export Report</button>
     <button class="btn btn-secondary" id="clear-btn">Clear</button>
   </div>
 
@@ -81,9 +83,18 @@ setupFileUpload('drop-zone', 'file-input', 'file-name');
 const fileInput = document.getElementById('file-input');
 const validateBtn = document.getElementById('validate-btn');
 const clearBtn = document.getElementById('clear-btn');
+const demoBtn = document.getElementById('demo-btn');
+const exportBtn = document.getElementById('export-btn');
 const schemaSelect = document.getElementById('schema-select');
+let activeFile = null;
+let currentReport = null;
 
-fileInput.addEventListener('change', () => { validateBtn.disabled = !fileInput.files.length; });
+fileInput.addEventListener('change', () => {
+  activeFile = fileInput.files[0] || null;
+  currentReport = null;
+  exportBtn.disabled = true;
+  validateBtn.disabled = !activeFile;
+});
 
 /* ── Load schemas ─────────────────────────────────────── */
 (async () => {
@@ -102,7 +113,7 @@ fileInput.addEventListener('change', () => { validateBtn.disabled = !fileInput.f
 
 /* ── Validate ─────────────────────────────────────────── */
 validateBtn.addEventListener('click', async () => {
-  const file = fileInput.files[0];
+  const file = activeFile || fileInput.files[0];
   if (!file) return;
 
   hideResults();
@@ -117,22 +128,45 @@ validateBtn.addEventListener('click', async () => {
 
     const { data } = await apiUpload(path, file);
     hideLoading();
+    currentReport = data;
+    exportBtn.disabled = false;
     renderResults(data);
     showResults();
   } catch (e) {
     hideLoading();
     alert('Validation failed: ' + e.message);
   } finally {
-    validateBtn.disabled = !fileInput.files.length;
+  validateBtn.disabled = !fileInput.files.length;
   }
+});
+
+demoBtn.addEventListener('click', async () => {
+  try {
+    activeFile = await loadDemoFile('../demo/csv-validator-demo.csv', 'csv-validator-demo.csv');
+    currentReport = null;
+    exportBtn.disabled = true;
+    document.getElementById('file-name').textContent = activeFile.name;
+    document.getElementById('file-name').style.display = 'block';
+    validateBtn.disabled = false;
+  } catch (e) {
+    alert('Could not load demo file: ' + e.message);
+  }
+});
+
+exportBtn.addEventListener('click', () => {
+  if (!currentReport) return;
+  downloadJson('dataforge-csv-validation-report.json', currentReport);
 });
 
 /* ── Clear ────────────────────────────────────────────── */
 clearBtn.addEventListener('click', () => {
   fileInput.value = '';
+  activeFile = null;
+  currentReport = null;
   document.getElementById('file-name').textContent = '';
   document.getElementById('file-name').style.display = 'none';
   validateBtn.disabled = true;
+  exportBtn.disabled = true;
   hideResults();
 });
 

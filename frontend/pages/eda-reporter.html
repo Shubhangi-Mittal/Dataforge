@@ -204,6 +204,8 @@
 
   <div class="btn-row">
     <button class="btn btn-primary" id="analyze-btn" disabled>Generate EDA Report</button>
+    <button class="btn btn-secondary" id="demo-btn">Use Demo Dataset</button>
+    <button class="btn btn-secondary" id="export-btn" disabled>Export Report</button>
   </div>
 
   <div class="loading" id="loading"><div class="spinner"></div><p>Crunching your data...</p></div>
@@ -237,11 +239,20 @@ setupFileUpload('drop-zone', 'file-input', 'file-name');
 
 const fileInput = document.getElementById('file-input');
 const analyzeBtn = document.getElementById('analyze-btn');
+const demoBtn = document.getElementById('demo-btn');
+const exportBtn = document.getElementById('export-btn');
+let activeFile = null;
+let currentReport = null;
 
-fileInput.addEventListener('change', () => { analyzeBtn.disabled = !fileInput.files.length; });
+fileInput.addEventListener('change', () => {
+  activeFile = fileInput.files[0] || null;
+  currentReport = null;
+  exportBtn.disabled = true;
+  analyzeBtn.disabled = !activeFile;
+});
 
 analyzeBtn.addEventListener('click', async () => {
-  const file = fileInput.files[0];
+  const file = activeFile || fileInput.files[0];
   if (!file) return;
   hideResults();
   showLoading();
@@ -249,6 +260,8 @@ analyzeBtn.addEventListener('click', async () => {
   try {
     const { data } = await apiUpload('/api/eda-reporter/analyze', file);
     hideLoading();
+    currentReport = data;
+    exportBtn.disabled = false;
     render(data);
     showResults();
   } catch (e) {
@@ -257,6 +270,24 @@ analyzeBtn.addEventListener('click', async () => {
   } finally {
     analyzeBtn.disabled = false;
   }
+});
+
+demoBtn.addEventListener('click', async () => {
+  try {
+    activeFile = await loadDemoFile('../demo/eda-retail-demo.csv', 'eda-retail-demo.csv');
+    currentReport = null;
+    exportBtn.disabled = true;
+    document.getElementById('file-name').textContent = activeFile.name;
+    document.getElementById('file-name').style.display = 'block';
+    analyzeBtn.disabled = false;
+  } catch (e) {
+    alert('Could not load demo dataset: ' + e.message);
+  }
+});
+
+exportBtn.addEventListener('click', () => {
+  if (!currentReport) return;
+  downloadJson('dataforge-eda-report.json', currentReport);
 });
 
 function render(d) {

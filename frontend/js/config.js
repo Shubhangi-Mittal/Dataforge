@@ -101,3 +101,29 @@ function escapeHtml(str) {
   div.textContent = str;
   return div.innerHTML;
 }
+
+async function loadDemoFile(url, filename, mimeType = 'text/csv') {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Could not load demo file: ${filename}`);
+  const blob = await res.blob();
+  return new File([blob], filename, { type: blob.type || mimeType });
+}
+
+function downloadBlob(filename, blob) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function downloadText(filename, text, mimeType = 'text/plain;charset=utf-8') {
+  downloadBlob(filename, new Blob([text], { type: mimeType }));
+}
+
+function downloadJson(filename, data) {
+  downloadText(filename, JSON.stringify(data, null, 2), 'application/json;charset=utf-8');
+}

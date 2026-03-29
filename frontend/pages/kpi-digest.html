@@ -115,6 +115,8 @@
 
   <div class="btn-row">
     <button class="btn btn-primary" id="digest-btn">Generate Daily Digest</button>
+    <button class="btn btn-secondary" id="demo-kpis-btn">Load Demo KPIs</button>
+    <button class="btn btn-secondary" id="export-btn" disabled>Export Digest</button>
     <button class="btn btn-secondary" id="list-btn">List KPIs</button>
     <button class="btn btn-secondary" id="history-btn">View History</button>
   </div>
@@ -146,6 +148,8 @@
 <script src="../js/config.js?v=5"></script>
 <script>
 const barCanvas = document.getElementById('bar-canvas');
+const exportBtn = document.getElementById('export-btn');
+let currentDigest = null;
 
 function clearSections() {
   document.getElementById('slack-section').innerHTML = '';
@@ -259,8 +263,35 @@ document.getElementById('add-kpi-btn').addEventListener('click', async () => {
     document.getElementById('content').innerHTML =
       '<p style="color:var(--green);font-weight:600">KPI "' + escapeHtml(name) + '" added successfully.</p>';
     document.getElementById('raw-json').textContent = JSON.stringify(data, null, 2);
+    currentDigest = null;
+    exportBtn.disabled = true;
     showResults();
   } catch (e) { hideLoading(); alert('Error: ' + e.message); }
+});
+
+document.getElementById('demo-kpis-btn').addEventListener('click', async () => {
+  hideResults(); showLoading();
+  const demoKpis = [
+    { id: 'revenue', name: 'Revenue', query: 'SELECT SUM(amount) FROM orders', unit: 'USD', trend_direction: 'up_is_good' },
+    { id: 'churn', name: 'Churn Rate', query: 'SELECT churn_rate FROM retention_daily', unit: '%', trend_direction: 'down_is_good' },
+    { id: 'p95_latency', name: 'P95 Latency', query: 'SELECT p95_latency_ms FROM api_metrics', unit: 'ms', trend_direction: 'down_is_good' },
+  ];
+  try {
+    for (const kpi of demoKpis) {
+      await apiPost('/api/kpi-digest/kpis', kpi);
+    }
+    hideLoading();
+    clearSections();
+    document.getElementById('results-title').textContent = 'Demo KPIs Ready';
+    document.getElementById('results-status').textContent = 'SEEDED';
+    document.getElementById('results-status').className = 'results-status status-pass';
+    document.getElementById('content').innerHTML = '<p style="color:var(--green);font-weight:600">Loaded 3 demo KPIs. Generate a digest to see a polished executive update.</p>';
+    document.getElementById('raw-json').textContent = JSON.stringify({ loaded: demoKpis }, null, 2);
+    showResults();
+  } catch (e) {
+    hideLoading();
+    alert('Error: ' + e.message);
+  }
 });
 
 /* ── Generate Daily Digest ─────────────────────────── */
@@ -322,8 +353,18 @@ document.getElementById('digest-btn').addEventListener('click', async () => {
 
     document.getElementById('content').innerHTML = '';
     document.getElementById('raw-json').textContent = JSON.stringify(d, null, 2);
+    currentDigest = d;
+    exportBtn.disabled = false;
     showResults();
   } catch (e) { hideLoading(); alert('Error: ' + e.message); }
+});
+
+exportBtn.addEventListener('click', () => {
+  if (!currentDigest) return;
+  downloadJson('dataforge-kpi-digest.json', currentDigest);
+  if (currentDigest.slack_message) {
+    downloadText('dataforge-kpi-digest.txt', currentDigest.slack_message);
+  }
 });
 
 /* ── List KPIs ─────────────────────────────────────── */

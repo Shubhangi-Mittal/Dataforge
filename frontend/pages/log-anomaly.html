@@ -63,6 +63,9 @@
     <button class="btn btn-primary" id="detect-btn">Detect Anomalies</button>
     <button class="btn btn-secondary" id="ingest-btn">Ingest &amp; Monitor</button>
     <button class="btn btn-secondary" id="sample-btn">Generate Sample</button>
+    <button class="btn btn-secondary" id="latency-btn">Latency Regression</button>
+    <button class="btn btn-secondary" id="traffic-btn">Traffic Spike</button>
+    <button class="btn btn-secondary" id="export-btn" disabled>Export Results</button>
     <button class="btn btn-secondary" id="alerts-btn">View Alerts</button>
   </div>
 
@@ -91,11 +94,25 @@
 <script src="../js/config.js?v=5"></script>
 <script>
 const valuesInput = document.getElementById('values-input');
+const exportBtn = document.getElementById('export-btn');
+let currentResult = null;
 
 function parseValues() {
   return valuesInput.value.split(',')
     .map(v => parseFloat(v.trim()))
     .filter(v => !isNaN(v));
+}
+
+function buildAnomalyLookup(methods) {
+  const lookup = { z_score: new Map(), iqr: new Map(), moving_average: new Map() };
+  Object.keys(lookup).forEach(method => {
+    (methods[method] || []).forEach(item => {
+      if (item && typeof item.index === 'number') {
+        lookup[method].set(item.index, item);
+      }
+    });
+  });
+  return lookup;
 }
 
 /* ── Draw Time Series Chart ────────────────────────── */
@@ -223,8 +240,9 @@ document.getElementById('detect-btn').addEventListener('click', async () => {
 
     // Collect all anomaly indices
     const anomalyIndices = new Set();
-    Object.values(data.methods || {}).forEach(indices => {
-      if (Array.isArray(indices)) indices.forEach(i => anomalyIndices.add(i));
+    const anomalyLookup = buildAnomalyLookup(data.methods || {});
+    Object.values(anomalyLookup).forEach(map => {
+      map.forEach((_, index) => anomalyIndices.add(index));
     });
 
     drawChart(values, anomalyIndices);
@@ -236,9 +254,9 @@ document.getElementById('detect-btn').addEventListener('click', async () => {
       h += '<div style="overflow-x:auto"><table class="errors-table"><thead><tr><th>Index</th><th>Value</th><th>Z-Score</th><th>IQR</th><th>Moving Avg</th></tr></thead><tbody>';
       const sorted = [...anomalyIndices].sort((a, b) => a - b);
       sorted.forEach(idx => {
-        const zs = (data.methods.z_score || []).includes(idx);
-        const iq = (data.methods.iqr || []).includes(idx);
-        const ma = (data.methods.moving_average || []).includes(idx);
+        const zs = anomalyLookup.z_score.has(idx);
+        const iq = anomalyLookup.iqr.has(idx);
+        const ma = anomalyLookup.moving_average.has(idx);
         h += '<tr><td>' + idx + '</td><td style="font-family:\'JetBrains Mono\',monospace;font-weight:600;color:var(--red)">' + values[idx] + '</td>';
         h += '<td><span class="anomaly-badge ' + (zs ? 'yes' : 'no') + '">' + (zs ? 'ANOMALY' : 'OK') + '</span></td>';
         h += '<td><span class="anomaly-badge ' + (iq ? 'yes' : 'no') + '">' + (iq ? 'ANOMALY' : 'OK') + '</span></td>';
@@ -250,6 +268,8 @@ document.getElementById('detect-btn').addEventListener('click', async () => {
     }
     document.getElementById('content').innerHTML = h;
     document.getElementById('raw-json').textContent = JSON.stringify(data, null, 2);
+    currentResult = { values, report: data };
+    exportBtn.disabled = false;
     showResults();
   } catch (e) { hideLoading(); alert('Error: ' + e.message); }
 });
@@ -274,6 +294,8 @@ document.getElementById('ingest-btn').addEventListener('click', async () => {
     document.getElementById('content').innerHTML =
       '<p style="color:var(--green);font-weight:600">Successfully ingested ' + values.length + ' values into stream "' + escapeHtml(stream) + '" / metric "' + escapeHtml(metric) + '".</p>';
     document.getElementById('raw-json').textContent = JSON.stringify(data, null, 2);
+    currentResult = { values, report: data };
+    exportBtn.disabled = false;
     showResults();
   } catch (e) { hideLoading(); alert('Error: ' + e.message); }
 });
@@ -289,6 +311,27 @@ document.getElementById('sample-btn').addEventListener('click', async () => {
       drawChart(d.values, null);
     }
   } catch (e) { hideLoading(); alert('Error: ' + e.message); }
+});
+
+document.getElementById('latency-btn').addEventListener('click', () => {
+  const series = [180, 182, 179, 181, 183, 180, 184, 182, 181, 185, 190, 194, 198, 215, 244, 271, 288, 301, 312, 318];
+  valuesInput.value = series.join(', ');
+  document.getElementById('stream-name').value = 'checkout_api';
+  document.getElementById('metric-name').value = 'p95_latency_ms';
+  drawChart(series, null);
+});
+
+document.getElementById('traffic-btn').addEventListener('click', () => {
+  const series = [1220, 1255, 1248, 1261, 1289, 1295, 1274, 1301, 1318, 1297, 2280, 2412, 2368, 1325, 1308, 1299, 1312, 1288, 1277, 1269];
+  valuesInput.value = series.join(', ');
+  document.getElementById('stream-name').value = 'growth_campaign';
+  document.getElementById('metric-name').value = 'requests_per_minute';
+  drawChart(series, null);
+});
+
+exportBtn.addEventListener('click', () => {
+  if (!currentResult) return;
+  downloadJson('dataforge-anomaly-report.json', currentResult);
 });
 
 /* ── View Alerts ───────────────────────────────────── */
@@ -321,6 +364,8 @@ document.getElementById('alerts-btn').addEventListener('click', async () => {
     }
     document.getElementById('content').innerHTML = h;
     document.getElementById('raw-json').textContent = JSON.stringify(d, null, 2);
+    currentResult = d;
+    exportBtn.disabled = false;
     showResults();
   } catch (e) { hideLoading(); alert('Error: ' + e.message); }
 });

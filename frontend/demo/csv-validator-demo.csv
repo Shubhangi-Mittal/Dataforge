@@ -1,0 +1,7 @@
+customer_id,full_name,email,signup_date,is_active,plan,monthly_spend
+1001,Ana Rivera,ana.rivera@example.com,2026-01-05,true,pro,120.50
+1002,Marcus Chen,marcus.chen@example.com,2026-01-06,false,basic,49.99
+1003,Jules Park,bad-email,2026/01/09,yes,basic,39.00
+1004,,lee@example.com,2026-01-11,true,enterprise,500.00
+1005,Priya Shah,priya.shah@example.com,2026-01-13,true,pro,
+1006,Diego Mora,diego.mora@example.com,2026-01-17,false,basic,29.00
