@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dataset Audit Report — DataForge</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<nav>
+  <a href="../index.html" class="logo"><span class="logo-icon">&#9874;</span> DataForge</a>
+  <div class="nav-links"><a href="../index.html">All Tools</a><a href="/docs" target="_blank" rel="noreferrer" class="nav-docs">API Docs</a></div>
+</nav>
+
+<div class="tool-page">
+  <div class="tool-header">
+    <a href="../index.html" class="back-link">&larr; Back to tools</a>
+    <h1>&#128221; Dataset Audit Report</h1>
+    <p>Upload one dataset and get a combined audit covering schema validation, data quality, EDA, anomaly scans, and next steps.</p>
+  </div>
+
+  <div class="info-box">
+    <strong>What this tool does:</strong> Dataset Audit Report is the unified command center for evaluating a new dataset before it reaches dashboards, models, or production pipelines.
+    <ul>
+      <li>Runs schema validation and shows structural issues</li>
+      <li>Checks quality and completeness across columns</li>
+      <li>Builds an EDA summary with insights and correlations</li>
+      <li>Scans numeric columns for anomaly signals</li>
+      <li>Saves the final report to audit history for later review</li>
+    </ul>
+  </div>
+
+  <div class="upload-zone" id="drop-zone">
+    <div class="upload-icon">&#128202;</div>
+    <p>Drop CSV / Excel file here, or click to browse</p>
+    <div class="file-name" id="file-name"></div>
+    <input type="file" id="file-input" accept=".csv,.xlsx,.xls,.tsv" hidden>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn btn-primary" id="audit-btn" disabled>Run Dataset Audit</button>
+    <button class="btn btn-secondary" id="demo-btn">Use Demo Dataset</button>
+    <button class="btn btn-secondary" id="history-btn">Audit History</button>
+    <button class="btn btn-secondary" id="export-btn" disabled>Export Report</button>
+  </div>
+
+  <div class="loading" id="loading"><div class="spinner"></div><p>Building your dataset audit...</p></div>
+
+  <div class="results-panel" id="results">
+    <div class="results-header">
+      <h3 id="results-title">Dataset Audit</h3>
+      <span class="results-status status-info" id="results-status"></span>
+    </div>
+    <div class="results-body">
+      <div id="summary-section"></div>
+      <div id="recommendations-section"></div>
+      <div id="content"></div>
+      <details style="margin-top:16px">
+        <summary style="cursor:pointer;font-size:0.82rem;color:var(--text-3);font-weight:600">Raw JSON</summary>
+        <pre id="raw-json"></pre>
+      </details>
+    </div>
+  </div>
+</div>
+
+<footer><p>Built by <strong>Shubhangi Mittal</strong> &middot; DataForge</p></footer>
+
+<script src="/env.js"></script>
+<script src="../js/config.js?v=5"></script>
+<script>
+setupFileUpload('drop-zone', 'file-input', 'file-name');
+
+const fileInput = document.getElementById('file-input');
+const auditBtn = document.getElementById('audit-btn');
+const exportBtn = document.getElementById('export-btn');
+let activeFile = null;
+let currentAudit = null;
+
+fileInput.addEventListener('change', () => {
+  activeFile = fileInput.files[0] || null;
+  currentAudit = null;
+  exportBtn.disabled = true;
+  auditBtn.disabled = !activeFile;
+});
+
+document.getElementById('demo-btn').addEventListener('click', async () => {
+  try {
+    activeFile = await loadDemoFile('../demo/eda-retail-demo.csv', 'eda-retail-demo.csv');
+    currentAudit = null;
+    exportBtn.disabled = true;
+    document.getElementById('file-name').textContent = activeFile.name;
+    document.getElementById('file-name').style.display = 'block';
+    auditBtn.disabled = false;
+  } catch (e) {
+    alert('Could not load demo dataset: ' + e.message);
+  }
+});
+
+document.getElementById('audit-btn').addEventListener('click', async () => {
+  const file = activeFile || fileInput.files[0];
+  if (!file) return;
+  hideResults(); showLoading();
+  try {
+    const { data } = await apiUpload('/api/dataset-audit/analyze', file);
+    currentAudit = data;
+    exportBtn.disabled = false;
+    hideLoading();
+    renderAudit(data);
+    showResults();
+  } catch (e) {
+    hideLoading();
+    alert('Error: ' + e.message);
+  }
+});
+
+document.getElementById('history-btn').addEventListener('click', async () => {
+  hideResults(); showLoading();
+  try {
+    const d = await apiGet('/api/dataset-audit/history');
+    hideLoading();
+    document.getElementById('results-title').textContent = 'Audit History';
+    document.getElementById('results-status').textContent = d.count + ' reports';
+    document.getElementById('results-status').className = 'results-status status-info';
+    document.getElementById('summary-section').innerHTML = '';
+    document.getElementById('recommendations-section').innerHTML = '';
+    let html = '';
+    if (d.reports && d.reports.length) {
+      html += '<div style="overflow-x:auto"><table class="errors-table"><thead><tr><th>ID</th><th>Name</th><th>Created</th><th>Readiness</th><th>Rows</th><th>Columns</th></tr></thead><tbody>';
+      d.reports.forEach(report => {
+        const s = report.summary || {};
+        html += '<tr><td class="mono">' + report.id + '</td><td>' + escapeHtml(report.name) + '</td><td class="mono">' + escapeHtml(report.created_at) + '</td><td>' + escapeHtml(s.readiness || 'unknown') + '</td><td>' + (s.rows || 0) + '</td><td>' + (s.columns || 0) + '</td></tr>';
+      });
+      html += '</tbody></table></div>';
+    } else {
+      html = '<p style="color:var(--text-3)">No saved audit reports yet.</p>';
+    }
+    document.getElementById('content').innerHTML = html;
+    document.getElementById('raw-json').textContent = JSON.stringify(d, null, 2);
+    showResults();
+  } catch (e) {
+    hideLoading();
+    alert('Error: ' + e.message);
+  }
+});
+
+exportBtn.addEventListener('click', () => {
+  if (!currentAudit) return;
+  downloadJson('dataforge-dataset-audit.json', currentAudit);
+});
+
+function renderAudit(data) {
+  const s = data.summary || {};
+  const readinessClass = s.readiness === 'ready' ? 'status-pass' : s.readiness === 'review' ? 'status-info' : 'status-fail';
+  document.getElementById('results-title').textContent = 'Dataset Audit';
+  document.getElementById('results-status').textContent = (s.readiness || 'unknown').toUpperCase();
+  document.getElementById('results-status').className = 'results-status ' + readinessClass;
+
+  document.getElementById('summary-section').innerHTML =
+    '<div class="stats-row">' +
+      '<div class="stat-card"><div class="stat-val">' + (s.rows || 0) + '</div><div class="stat-lbl">Rows</div></div>' +
+      '<div class="stat-card"><div class="stat-val">' + (s.columns || 0) + '</div><div class="stat-lbl">Columns</div></div>' +
+      '<div class="stat-card"><div class="stat-val">' + (s.validation_errors || 0) + '</div><div class="stat-lbl">Validation Errors</div></div>' +
+      '<div class="stat-card"><div class="stat-val">' + (s.quality_alerts || 0) + '</div><div class="stat-lbl">Quality Alerts</div></div>' +
+      '<div class="stat-card"><div class="stat-val">' + (s.anomaly_columns || 0) + '</div><div class="stat-lbl">Anomaly Columns</div></div>' +
+    '</div>';
+
+  let recHtml = '<h4 style="font-size:0.88rem;margin:20px 0 8px;font-weight:600">Recommended Next Steps</h4><div style="display:grid;gap:10px">';
+  (data.recommendations || []).forEach(rec => {
+    recHtml += '<div style="padding:14px 16px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-card);font-size:0.82rem;color:var(--text-2)">' + escapeHtml(rec) + '</div>';
+  });
+  recHtml += '</div>';
+  document.getElementById('recommendations-section').innerHTML = recHtml;
+
+  let html = '';
+  html += '<h4 style="font-size:0.88rem;margin:20px 0 8px;font-weight:600">Audit Highlights</h4>';
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px">';
+  html += '<div style="padding:16px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-card)"><div style="font-size:0.76rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px">Validation Status</div><div style="font-size:0.92rem;font-weight:600">' + escapeHtml((data.validation_report || {}).summary?.status || 'UNKNOWN') + '</div><div style="font-size:0.78rem;color:var(--text-2);margin-top:6px">' + ((data.validation_report || {}).summary?.total_errors || 0) + ' issue(s) found</div></div>';
+  html += '<div style="padding:16px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-card)"><div style="font-size:0.76rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px">Quality Score</div><div style="font-size:0.92rem;font-weight:600">' + escapeHtml((data.quality_report || {}).summary?.quality_score || 'unknown') + '</div><div style="font-size:0.78rem;color:var(--text-2);margin-top:6px">' + (((data.quality_report || {}).summary?.overall_completeness_pct) || 0) + '% completeness</div></div>';
+  html += '<div style="padding:16px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-card)"><div style="font-size:0.76rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px">EDA Insights</div><div style="font-size:0.92rem;font-weight:600">' + ((data.eda_report || {}).insights || []).length + '</div><div style="font-size:0.78rem;color:var(--text-2);margin-top:6px">Auto-generated insights</div></div>';
+  html += '</div>';
+
+  if (data.anomaly_scan && data.anomaly_scan.length) {
+    html += '<h4 style="font-size:0.88rem;margin:24px 0 8px;font-weight:600">Numeric Anomaly Scan</h4>';
+    html += '<div style="overflow-x:auto"><table class="errors-table"><thead><tr><th>Column</th><th>Values</th><th>Z-Score Hits</th><th>IQR Hits</th><th>Sample Indices</th></tr></thead><tbody>';
+    data.anomaly_scan.forEach(scan => {
+      html += '<tr><td class="mono">' + escapeHtml(scan.column) + '</td><td>' + scan.value_count + '</td><td>' + scan.z_score_hits + '</td><td>' + scan.iqr_hits + '</td><td class="mono">' + escapeHtml((scan.sample_indices || []).join(', ')) + '</td></tr>';
+    });
+    html += '</tbody></table></div>';
+  }
+
+  document.getElementById('content').innerHTML = html;
+  document.getElementById('raw-json').textContent = JSON.stringify(data, null, 2);
+}
+</script>
+</body>
+</html>

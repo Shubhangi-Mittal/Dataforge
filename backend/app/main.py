@@ -1,6 +1,6 @@
 """
 DataForge — Unified Data Engineering Microservices Platform
-10 data-centric tools in one FastAPI backend.
+12 data-centric tools in one FastAPI backend.
 """
 
 import os
@@ -59,11 +59,12 @@ from app.routers import (
     log_anomaly,
     kpi_digest,
     automation_center,
+    dataset_audit,
 )
 
 app = FastAPI(
     title="DataForge API",
-    description="11 data-centric microservices in one platform. "
+    description="12 data-centric microservices in one platform. "
                 "Schema validation, SQL analysis, EDA reports, data quality monitoring, and more.",
     version="1.0.0",
     docs_url="/docs",
@@ -118,6 +119,7 @@ app.include_router(dag_visualizer.router, prefix="/api/dag-visualizer", tags=["0
 app.include_router(log_anomaly.router, prefix="/api/log-anomaly", tags=["09 — Log Anomaly Detector"])
 app.include_router(kpi_digest.router, prefix="/api/kpi-digest", tags=["10 — KPI Digest Bot"])
 app.include_router(automation_center.router, prefix="/api/automation", tags=["11 — Automation Center"])
+app.include_router(dataset_audit.router, prefix="/api/dataset-audit", tags=["12 — Dataset Audit Report"])
 
 
 @app.get("/", tags=["System"])
@@ -137,6 +139,7 @@ async def root():
             {"id": "log-anomaly", "name": "Log Anomaly Detector", "status": "active"},
             {"id": "kpi-digest", "name": "KPI Digest Bot", "status": "active"},
             {"id": "automation-center", "name": "Automation Center", "status": "active"},
+            {"id": "dataset-audit", "name": "Dataset Audit Report", "status": "active"},
         ],
     }
 

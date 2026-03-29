@@ -12,12 +12,14 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
+from app import storage
+
 router = APIRouter()
 
 # ── KPI definitions ────────────────────────────────────────
-KPI_CONFIGS: dict[str, dict] = {}
+KPI_CONFIGS: dict[str, dict] = storage.load_keyed_records("kpi_configs")
 
-DIGEST_HISTORY: list[dict] = []
+DIGEST_HISTORY: list[dict] = storage.list_history("kpi_digest_history", limit=200)
 
 
 def simulate_kpi_value(kpi_id: str) -> dict:
@@ -97,7 +99,9 @@ def generate_digest(kpi_ids: Optional[list] = None) -> dict:
         },
     }
 
-    DIGEST_HISTORY.append({"generated_at": now.isoformat(), "kpi_count": len(kpis)})
+    history_entry = {"generated_at": now.isoformat(), "kpi_count": len(kpis)}
+    DIGEST_HISTORY.append(history_entry)
+    storage.append_history("kpi_digest_history", history_entry, history_entry["generated_at"])
     return digest
 
 
@@ -113,6 +117,7 @@ async def add_kpi(kpi: dict):
     if not kid:
         raise HTTPException(400, "KPI needs an 'id'")
     KPI_CONFIGS[kid] = kpi
+    storage.upsert_keyed_record("kpi_configs", kid, kpi)
     return {"message": f"KPI '{kid}' added", "kpi": kpi}
 
 
@@ -121,6 +126,7 @@ async def remove_kpi(kpi_id: str):
     if kpi_id not in KPI_CONFIGS:
         raise HTTPException(404)
     del KPI_CONFIGS[kpi_id]
+    storage.delete_keyed_record("kpi_configs", kpi_id)
     return {"message": f"Deleted '{kpi_id}'"}
 
 

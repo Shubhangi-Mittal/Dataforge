@@ -9,12 +9,13 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from app import storage
 from app.routers import kpi_digest, log_anomaly, sql_analyzer
 
 router = APIRouter()
 
-AUTOMATION_JOBS: dict[str, dict] = {}
-AUTOMATION_HISTORY: list[dict] = []
+AUTOMATION_JOBS: dict[str, dict] = storage.load_keyed_records("automation_jobs")
+AUTOMATION_HISTORY: list[dict] = storage.list_history("automation_history", limit=200)
 
 VALID_JOB_TYPES = {"kpi_digest", "log_anomaly", "sql_analysis"}
 VALID_FREQUENCIES = {"hourly", "daily", "weekly", "manual"}
@@ -131,7 +132,21 @@ def _record_history(job: dict, status: str, execution_summary: str, result: dict
         "result": result,
     }
     AUTOMATION_HISTORY.append(entry)
+    entry_id = storage.append_history("automation_history", entry, entry["executed_at"])
+    entry["id"] = entry_id
     return entry
+
+
+def _create_notification(title: str, message: str, level: str, category: str = "automation", related_job_id: Optional[str] = None, data: Optional[dict] = None) -> dict:
+    payload = {
+        "title": title,
+        "message": message,
+        "level": level,
+        "category": category,
+        "related_job_id": related_job_id,
+        "data": data or {},
+    }
+    return storage.create_notification(payload, _now_iso())
 
 
 @router.get("/jobs")
@@ -146,6 +161,14 @@ async def create_job(job: AutomationJobInput):
         raise HTTPException(409, f"Job '{job.id}' already exists")
     record = _build_job_record(job)
     AUTOMATION_JOBS[job.id] = record
+    storage.upsert_keyed_record("automation_jobs", job.id, record)
+    _create_notification(
+        title="Automation job created",
+        message=f"{job.name} is now scheduled as {job.frequency}.",
+        level="info",
+        related_job_id=job.id,
+        data={"job_type": job.job_type},
+    )
     return {"message": f"Job '{job.name}' created", "job": record}
 
 
@@ -157,6 +180,14 @@ async def toggle_job(job_id: str):
     job["enabled"] = not job["enabled"]
     job["updated_at"] = _now_iso()
     job["next_run_at"] = _compute_next_run(job["frequency"]) if job["enabled"] and job["frequency"] != "manual" else None
+    storage.upsert_keyed_record("automation_jobs", job_id, job)
+    _create_notification(
+        title="Automation job updated",
+        message=f"{job['name']} was {'enabled' if job['enabled'] else 'paused'}.",
+        level="info",
+        related_job_id=job_id,
+        data={"enabled": job["enabled"]},
+    )
     return {"message": f"Job '{job['name']}' {'enabled' if job['enabled'] else 'paused'}", "job": job}
 
 
@@ -165,6 +196,13 @@ async def delete_job(job_id: str):
     if job_id not in AUTOMATION_JOBS:
         raise HTTPException(404, f"Job '{job_id}' not found")
     removed = AUTOMATION_JOBS.pop(job_id)
+    storage.delete_keyed_record("automation_jobs", job_id)
+    _create_notification(
+        title="Automation job deleted",
+        message=f"{removed['name']} was removed from Automation Center.",
+        level="warning",
+        related_job_id=job_id,
+    )
     return {"message": f"Deleted '{removed['name']}'"}
 
 
@@ -180,7 +218,15 @@ async def run_job(job_id: str):
     job["last_status"] = "success"
     job["updated_at"] = _now_iso()
     job["next_run_at"] = _compute_next_run(job["frequency"], started_at) if job["enabled"] and job["frequency"] != "manual" else None
+    storage.upsert_keyed_record("automation_jobs", job_id, job)
     history_entry = _record_history(job, "success", execution["summary"], execution["result"])
+    _create_notification(
+        title="Automation job ran successfully",
+        message=execution["summary"],
+        level="success",
+        related_job_id=job_id,
+        data={"history_id": history_entry.get("id")},
+    )
     return {"message": f"Ran '{job['name']}'", "job": job, "execution": history_entry}
 
 
@@ -198,7 +244,16 @@ async def run_due_jobs():
             job["last_status"] = "success"
             job["updated_at"] = _now_iso()
             job["next_run_at"] = _compute_next_run(job["frequency"], now)
-            executed.append(_record_history(job, "success", execution["summary"], execution["result"]))
+            storage.upsert_keyed_record("automation_jobs", job["id"], job)
+            history_entry = _record_history(job, "success", execution["summary"], execution["result"])
+            executed.append(history_entry)
+            _create_notification(
+                title="Scheduled automation completed",
+                message=execution["summary"],
+                level="success",
+                related_job_id=job["id"],
+                data={"history_id": history_entry.get("id")},
+            )
     return {"executed_count": len(executed), "executions": executed}
 
 
@@ -220,5 +275,23 @@ async def automation_summary():
         "active_jobs": active,
         "paused_jobs": paused,
         "history_entries": len(AUTOMATION_HISTORY),
+        "unread_notifications": len(storage.list_notifications(limit=200, unread_only=True)),
         "job_types": type_breakdown,
     }
+
+
+@router.get("/notifications")
+async def list_automation_notifications(limit: int = 20, unread_only: bool = False):
+    notifications = [
+        n for n in storage.list_notifications(limit=100, unread_only=unread_only)
+        if n.get("category") == "automation"
+    ][:limit]
+    return {"count": len(notifications), "notifications": notifications}
+
+
+@router.post("/notifications/{notification_id}/read")
+async def mark_automation_notification_read(notification_id: int):
+    notification = storage.mark_notification_read(notification_id)
+    if not notification or notification.get("category") != "automation":
+        raise HTTPException(404, f"Notification '{notification_id}' not found")
+    return {"message": f"Marked notification {notification_id} as read", "notification": notification}

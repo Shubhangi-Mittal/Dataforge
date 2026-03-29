@@ -96,6 +96,7 @@
     <button class="btn btn-primary" id="summary-btn">Refresh Summary</button>
     <button class="btn btn-secondary" id="jobs-btn">List Jobs</button>
     <button class="btn btn-secondary" id="run-due-btn">Run Due Jobs</button>
+    <button class="btn btn-secondary" id="notifications-btn">Notifications</button>
     <button class="btn btn-secondary" id="history-btn">View History</button>
   </div>
 
@@ -163,6 +164,7 @@ async function renderSummary() {
       '<div class="stat-card"><div class="stat-val">' + d.active_jobs + '</div><div class="stat-lbl">Active</div></div>' +
       '<div class="stat-card"><div class="stat-val">' + d.paused_jobs + '</div><div class="stat-lbl">Paused</div></div>' +
       '<div class="stat-card"><div class="stat-val">' + d.history_entries + '</div><div class="stat-lbl">Runs Logged</div></div>' +
+      '<div class="stat-card"><div class="stat-val">' + d.unread_notifications + '</div><div class="stat-lbl">Unread Alerts</div></div>' +
     '</div>';
   return d;
 }
@@ -309,6 +311,44 @@ document.getElementById('history-btn').addEventListener('click', async () => {
   }
 });
 
+document.getElementById('notifications-btn').addEventListener('click', async () => {
+  hideResults(); showLoading();
+  try {
+    const d = await apiGet('/api/automation/notifications');
+    await renderSummary();
+    hideLoading();
+    document.getElementById('results-title').textContent = 'Automation Notifications';
+    document.getElementById('results-status').textContent = d.count + ' notifications';
+    document.getElementById('results-status').className = 'results-status status-info';
+    let html = '';
+    if (d.notifications && d.notifications.length) {
+      html += '<div style="display:grid;gap:10px">';
+      d.notifications.forEach(note => {
+        const pillClass = note.level === 'error' ? 'pill-red' : note.level === 'warning' ? 'pill-orange' : note.level === 'success' ? 'pill-green' : 'pill-cyan';
+        html += '<div style="padding:14px 16px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-card)">';
+        html += '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px">';
+        html += '<div><span class="pill ' + pillClass + '">' + escapeHtml(note.level || 'info') + '</span> <strong style="margin-left:8px">' + escapeHtml(note.title || 'Notification') + '</strong></div>';
+        html += '<div class="mono" style="font-size:0.74rem;color:var(--text-3)">' + escapeHtml(note.created_at || '') + '</div>';
+        html += '</div>';
+        html += '<div style="font-size:0.82rem;color:var(--text-2);margin-bottom:8px">' + escapeHtml(note.message || '') + '</div>';
+        if (!note.read) {
+          html += '<button class="btn btn-secondary" onclick="markNotificationRead(' + Number(note.id) + ')">Mark Read</button>';
+        }
+        html += '</div>';
+      });
+      html += '</div>';
+    } else {
+      html = '<p style="color:var(--text-3)">No automation notifications yet.</p>';
+    }
+    document.getElementById('content').innerHTML = html;
+    document.getElementById('raw-json').textContent = JSON.stringify(d, null, 2);
+    showResults();
+  } catch (e) {
+    hideLoading();
+    alert('Error: ' + e.message);
+  }
+});
+
 async function runJob(id) {
   showLoading();
   try {
@@ -339,6 +379,18 @@ async function toggleJob(id) {
     document.getElementById('raw-json').textContent = JSON.stringify(data, null, 2);
     showResults();
     document.getElementById('jobs-btn').click();
+  } catch (e) {
+    hideLoading();
+    alert('Error: ' + e.message);
+  }
+}
+
+async function markNotificationRead(id) {
+  showLoading();
+  try {
+    await apiPost('/api/automation/notifications/' + id + '/read', {});
+    hideLoading();
+    document.getElementById('notifications-btn').click();
   } catch (e) {
     hideLoading();
     alert('Error: ' + e.message);

@@ -9,10 +9,12 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from app import storage
+
 router = APIRouter()
 
-# ── In-memory metric store ─────────────────────────────────
-METRICS: dict[str, dict] = {}
+# ── Persistent metric store ────────────────────────────────
+METRICS: dict[str, dict] = storage.load_keyed_records("metrics")
 
 
 class MetricInput(BaseModel):
@@ -113,6 +115,7 @@ async def create_metric(metric: MetricInput):
     entry["created_at"] = datetime.utcnow().isoformat()
     entry["updated_at"] = entry["created_at"]
     METRICS[metric.id] = entry
+    storage.upsert_keyed_record("metrics", metric.id, entry)
     return {"message": f"Metric '{metric.name}' created", "metric": entry}
 
 
@@ -124,6 +127,7 @@ async def update_metric(metric_id: str, metric: MetricInput):
     entry["created_at"] = METRICS[metric_id].get("created_at", datetime.utcnow().isoformat())
     entry["updated_at"] = datetime.utcnow().isoformat()
     METRICS[metric_id] = entry
+    storage.upsert_keyed_record("metrics", metric_id, entry)
     return {"message": f"Metric '{metric.name}' updated", "metric": entry}
 
 
@@ -132,6 +136,7 @@ async def delete_metric(metric_id: str):
     if metric_id not in METRICS:
         raise HTTPException(404, f"Metric '{metric_id}' not found")
     del METRICS[metric_id]
+    storage.delete_keyed_record("metrics", metric_id)
     return {"message": f"Metric '{metric_id}' deleted"}
 
 
