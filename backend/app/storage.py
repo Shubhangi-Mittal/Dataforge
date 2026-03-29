@@ -3,9 +3,12 @@ Shared SQLite persistence layer for DataForge.
 """
 
 import json
+import math
 import sqlite3
 from pathlib import Path
 from typing import Any, Optional
+
+import numpy as np
 
 
 DB_PATH = Path(__file__).resolve().parents[1] / "dataforge_platform.db"
@@ -15,6 +18,29 @@ def get_connection() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def _sanitize_for_json(obj: Any) -> Any:
+    if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
+        return None
+    if isinstance(obj, (np.bool_,)):
+        return bool(obj)
+    if isinstance(obj, (np.integer,)):
+        return int(obj)
+    if isinstance(obj, (np.floating,)):
+        value = float(obj)
+        return None if (math.isnan(value) or math.isinf(value)) else value
+    if isinstance(obj, np.ndarray):
+        return [_sanitize_for_json(item) for item in obj.tolist()]
+    if isinstance(obj, dict):
+        return {key: _sanitize_for_json(value) for key, value in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_for_json(value) for value in obj]
+    return obj
+
+
+def _json_dumps(data: Any) -> str:
+    return json.dumps(_sanitize_for_json(data))
 
 
 def init_db() -> None:
@@ -77,7 +103,7 @@ def upsert_keyed_record(table: str, key: str, data: dict) -> None:
     conn.execute(
         f"INSERT INTO {table} (id, data) VALUES (?, ?) "
         f"ON CONFLICT(id) DO UPDATE SET data=excluded.data",
-        (key, json.dumps(data)),
+        (key, _json_dumps(data)),
     )
     conn.commit()
     conn.close()
@@ -94,7 +120,7 @@ def append_history(table: str, data: dict, created_at: str) -> int:
     conn = get_connection()
     cursor = conn.execute(
         f"INSERT INTO {table} (created_at, data) VALUES (?, ?)",
-        (created_at, json.dumps(data)),
+        (created_at, _json_dumps(data)),
     )
     conn.commit()
     row_id = int(cursor.lastrowid)
@@ -170,7 +196,7 @@ def save_report(report_type: str, name: str, payload: dict, created_at: str) -> 
     conn = get_connection()
     cursor = conn.execute(
         "INSERT INTO saved_reports (created_at, report_type, name, data) VALUES (?, ?, ?, ?)",
-        (created_at, report_type, name, json.dumps(payload)),
+        (created_at, report_type, name, _json_dumps(payload)),
     )
     conn.commit()
     report_id = int(cursor.lastrowid)
