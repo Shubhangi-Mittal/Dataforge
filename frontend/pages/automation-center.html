@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Automation Center — DataForge</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/style.css">
+<style>
+  .job-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:14px; }
+  .job-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px;
+  }
+  .job-meta { font-size: 0.76rem; color: var(--text-3); display:grid; gap:6px; margin-top:10px; }
+  .mono { font-family:'JetBrains Mono', monospace; }
+  .job-actions { display:flex; gap:10px; margin-top:14px; flex-wrap:wrap; }
+</style>
+</head>
+<body>
+<nav>
+  <a href="../index.html" class="logo"><span class="logo-icon">&#9874;</span> DataForge</a>
+  <div class="nav-links"><a href="../index.html">All Tools</a><a href="/docs" target="_blank" rel="noreferrer" class="nav-docs">API Docs</a></div>
+</nav>
+
+<div class="tool-page">
+  <div class="tool-header">
+    <a href="../index.html" class="back-link">&larr; Back to tools</a>
+    <h1>&#9881; Automation Center</h1>
+    <p>Turn DataForge into a lightweight operations layer with recurring jobs, on-demand execution, and run history.</p>
+  </div>
+
+  <div class="info-box">
+    <strong>What this tool does:</strong> Create recurring automation jobs for the tools that benefit most from scheduled execution.
+    <ul>
+      <li>Schedule KPI digests for recurring executive snapshots</li>
+      <li>Run anomaly detection jobs against saved metric sequences</li>
+      <li>Save SQL analysis checks for recurring query reviews</li>
+      <li>Track last run, next run, status, and execution history in one place</li>
+    </ul>
+  </div>
+
+  <details open style="margin-bottom:28px">
+    <summary style="cursor:pointer;font-size:0.92rem;font-weight:600;color:var(--accent-2);margin-bottom:12px">Create Automation Job</summary>
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:24px;margin-top:12px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div class="form-group" style="margin-bottom:0">
+          <label>Job ID</label>
+          <input type="text" id="job-id" placeholder="e.g. exec_digest_daily">
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label>Job Name</label>
+          <input type="text" id="job-name" placeholder="e.g. Daily Executive Digest">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div class="form-group" style="margin-bottom:0">
+          <label>Job Type</label>
+          <select id="job-type">
+            <option value="kpi_digest">KPI Digest</option>
+            <option value="log_anomaly">Log Anomaly Check</option>
+            <option value="sql_analysis">SQL Analysis</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label>Frequency</label>
+          <select id="job-frequency">
+            <option value="daily">Daily</option>
+            <option value="hourly">Hourly</option>
+            <option value="weekly">Weekly</option>
+            <option value="manual">Manual Only</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Preset</label>
+        <select id="job-preset">
+          <option value="exec_digest">Executive KPI Digest</option>
+          <option value="latency_watch">Latency Watch</option>
+          <option value="sql_review">SQL Review</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Config JSON</label>
+        <textarea id="job-config" rows="8" class="mono" placeholder='{"kpi_ids":["revenue","churn"]}'></textarea>
+      </div>
+      <div class="btn-row" style="margin-top:16px">
+        <button class="btn btn-primary" id="create-btn">Create Job</button>
+      </div>
+    </div>
+  </details>
+
+  <div class="btn-row">
+    <button class="btn btn-primary" id="summary-btn">Refresh Summary</button>
+    <button class="btn btn-secondary" id="jobs-btn">List Jobs</button>
+    <button class="btn btn-secondary" id="run-due-btn">Run Due Jobs</button>
+    <button class="btn btn-secondary" id="history-btn">View History</button>
+  </div>
+
+  <div class="loading" id="loading"><div class="spinner"></div><p>Running automation...</p></div>
+
+  <div class="results-panel" id="results">
+    <div class="results-header">
+      <h3 id="results-title">Automation Results</h3>
+      <span class="results-status status-info" id="results-status"></span>
+    </div>
+    <div class="results-body">
+      <div id="summary-section"></div>
+      <div id="content"></div>
+      <details style="margin-top:16px">
+        <summary style="cursor:pointer;font-size:0.82rem;color:var(--text-3);font-weight:600">Raw JSON</summary>
+        <pre id="raw-json"></pre>
+      </details>
+    </div>
+  </div>
+</div>
+
+<footer><p>Built by <strong>Shubhangi Mittal</strong> &middot; DataForge</p></footer>
+
+<script src="/env.js"></script>
+<script src="../js/config.js?v=5"></script>
+<script>
+const presetEl = document.getElementById('job-preset');
+const configEl = document.getElementById('job-config');
+const typeEl = document.getElementById('job-type');
+
+const PRESETS = {
+  exec_digest: {
+    job_type: 'kpi_digest',
+    config: { kpi_ids: ['revenue', 'churn', 'p95_latency'] }
+  },
+  latency_watch: {
+    job_type: 'log_anomaly',
+    config: { method: 'all', values: [180,182,179,181,183,180,184,182,181,185,190,194,198,215,244,271,288,301] }
+  },
+  sql_review: {
+    job_type: 'sql_analysis',
+    config: { dialect: 'postgresql', query: 'SELECT * FROM orders WHERE status = \'delayed\' ORDER BY created_at DESC' }
+  }
+};
+
+function syncPreset() {
+  const preset = PRESETS[presetEl.value];
+  if (!preset) return;
+  typeEl.value = preset.job_type;
+  configEl.value = JSON.stringify(preset.config, null, 2);
+}
+
+presetEl.addEventListener('change', syncPreset);
+typeEl.addEventListener('change', () => {
+  const preset = Object.values(PRESETS).find(p => p.job_type === typeEl.value);
+  if (preset) configEl.value = JSON.stringify(preset.config, null, 2);
+});
+syncPreset();
+
+async function renderSummary() {
+  const d = await apiGet('/api/automation/summary');
+  document.getElementById('summary-section').innerHTML =
+    '<div class="stats-row">' +
+      '<div class="stat-card"><div class="stat-val">' + d.total_jobs + '</div><div class="stat-lbl">Jobs</div></div>' +
+      '<div class="stat-card"><div class="stat-val">' + d.active_jobs + '</div><div class="stat-lbl">Active</div></div>' +
+      '<div class="stat-card"><div class="stat-val">' + d.paused_jobs + '</div><div class="stat-lbl">Paused</div></div>' +
+      '<div class="stat-card"><div class="stat-val">' + d.history_entries + '</div><div class="stat-lbl">Runs Logged</div></div>' +
+    '</div>';
+  return d;
+}
+
+document.getElementById('create-btn').addEventListener('click', async () => {
+  const id = document.getElementById('job-id').value.trim();
+  const name = document.getElementById('job-name').value.trim();
+  const job_type = typeEl.value;
+  const frequency = document.getElementById('job-frequency').value;
+  if (!id || !name) return alert('Please provide a job ID and name.');
+
+  let config = {};
+  try {
+    config = JSON.parse(configEl.value || '{}');
+  } catch (e) {
+    return alert('Config JSON is invalid.');
+  }
+
+  hideResults(); showLoading();
+  try {
+    const { data } = await apiPost('/api/automation/jobs', { id, name, job_type, frequency, enabled: true, config });
+    await renderSummary();
+    hideLoading();
+    document.getElementById('results-title').textContent = 'Job Created';
+    document.getElementById('results-status').textContent = 'CREATED';
+    document.getElementById('results-status').className = 'results-status status-pass';
+    document.getElementById('content').innerHTML = '<p style="color:var(--green);font-weight:600">Automation job "' + escapeHtml(name) + '" created successfully.</p>';
+    document.getElementById('raw-json').textContent = JSON.stringify(data, null, 2);
+    showResults();
+  } catch (e) {
+    hideLoading();
+    alert('Error: ' + e.message);
+  }
+});
+
+document.getElementById('summary-btn').addEventListener('click', async () => {
+  hideResults(); showLoading();
+  try {
+    const d = await renderSummary();
+    hideLoading();
+    document.getElementById('results-title').textContent = 'Automation Summary';
+    document.getElementById('results-status').textContent = d.total_jobs + ' jobs';
+    document.getElementById('results-status').className = 'results-status status-info';
+    let html = '<div class="category-pills">';
+    Object.entries(d.job_types || {}).forEach(([type, count]) => {
+      html += '<span class="category-pill">' + escapeHtml(type) + '<span class="cat-count">' + count + '</span></span>';
+    });
+    html += '</div>';
+    document.getElementById('content').innerHTML = html;
+    document.getElementById('raw-json').textContent = JSON.stringify(d, null, 2);
+    showResults();
+  } catch (e) {
+    hideLoading();
+    alert('Error: ' + e.message);
+  }
+});
+
+document.getElementById('jobs-btn').addEventListener('click', async () => {
+  hideResults(); showLoading();
+  try {
+    const d = await apiGet('/api/automation/jobs');
+    await renderSummary();
+    hideLoading();
+    document.getElementById('results-title').textContent = 'Automation Jobs';
+    document.getElementById('results-status').textContent = d.count + ' jobs';
+    document.getElementById('results-status').className = 'results-status status-info';
+    let html = '';
+    if (d.jobs && d.jobs.length) {
+      html += '<div class="job-grid">';
+      d.jobs.forEach(job => {
+        html += '<div class="job-card">';
+        html += '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><strong>' + escapeHtml(job.name) + '</strong><span class="pill ' + (job.enabled ? 'pill-green' : 'pill-orange') + '">' + (job.enabled ? 'active' : 'paused') + '</span></div>';
+        html += '<div class="mono" style="font-size:0.76rem;color:var(--text-3);margin-top:6px">' + escapeHtml(job.id) + '</div>';
+        html += '<div class="job-meta">';
+        html += '<div>Type: <span class="mono">' + escapeHtml(job.job_type) + '</span></div>';
+        html += '<div>Frequency: <span class="mono">' + escapeHtml(job.frequency) + '</span></div>';
+        html += '<div>Last run: <span class="mono">' + escapeHtml(job.last_run_at || 'never') + '</span></div>';
+        html += '<div>Next run: <span class="mono">' + escapeHtml(job.next_run_at || 'manual') + '</span></div>';
+        html += '</div>';
+        html += '<div class="job-actions">';
+        html += '<button class="btn btn-secondary" onclick="runJob(\'' + escapeHtml(job.id) + '\')">Run Now</button>';
+        html += '<button class="btn btn-secondary" onclick="toggleJob(\'' + escapeHtml(job.id) + '\')">' + (job.enabled ? 'Pause' : 'Resume') + '</button>';
+        html += '</div>';
+        html += '</div>';
+      });
+      html += '</div>';
+    } else {
+      html = '<p style="color:var(--text-3)">No automation jobs yet. Create one above.</p>';
+    }
+    document.getElementById('content').innerHTML = html;
+    document.getElementById('raw-json').textContent = JSON.stringify(d, null, 2);
+    showResults();
+  } catch (e) {
+    hideLoading();
+    alert('Error: ' + e.message);
+  }
+});
+
+document.getElementById('run-due-btn').addEventListener('click', async () => {
+  hideResults(); showLoading();
+  try {
+    const { data } = await apiPost('/api/automation/jobs/run-due', {});
+    await renderSummary();
+    hideLoading();
+    document.getElementById('results-title').textContent = 'Due Jobs';
+    document.getElementById('results-status').textContent = data.executed_count + ' executed';
+    document.getElementById('results-status').className = 'results-status ' + (data.executed_count ? 'status-pass' : 'status-info');
+    document.getElementById('content').innerHTML = data.executed_count
+      ? '<p style="color:var(--green);font-weight:600">Executed ' + data.executed_count + ' due job(s).</p>'
+      : '<p style="color:var(--text-3)">No jobs were due yet.</p>';
+    document.getElementById('raw-json').textContent = JSON.stringify(data, null, 2);
+    showResults();
+  } catch (e) {
+    hideLoading();
+    alert('Error: ' + e.message);
+  }
+});
+
+document.getElementById('history-btn').addEventListener('click', async () => {
+  hideResults(); showLoading();
+  try {
+    const d = await apiGet('/api/automation/history');
+    await renderSummary();
+    hideLoading();
+    document.getElementById('results-title').textContent = 'Execution History';
+    document.getElementById('results-status').textContent = d.count + ' runs';
+    document.getElementById('results-status').className = 'results-status status-info';
+    let html = '';
+    if (d.history && d.history.length) {
+      html += '<div style="overflow-x:auto"><table class="errors-table"><thead><tr><th>Job</th><th>Type</th><th>Status</th><th>Executed</th><th>Summary</th></tr></thead><tbody>';
+      d.history.slice().reverse().forEach(entry => {
+        html += '<tr><td>' + escapeHtml(entry.job_name) + '</td><td class="mono">' + escapeHtml(entry.job_type) + '</td><td>' + escapeHtml(entry.status) + '</td><td class="mono">' + escapeHtml(entry.executed_at) + '</td><td>' + escapeHtml(entry.summary) + '</td></tr>';
+      });
+      html += '</tbody></table></div>';
+    } else {
+      html = '<p style="color:var(--text-3)">No execution history yet.</p>';
+    }
+    document.getElementById('content').innerHTML = html;
+    document.getElementById('raw-json').textContent = JSON.stringify(d, null, 2);
+    showResults();
+  } catch (e) {
+    hideLoading();
+    alert('Error: ' + e.message);
+  }
+});
+
+async function runJob(id) {
+  showLoading();
+  try {
+    const { data } = await apiPost('/api/automation/jobs/' + encodeURIComponent(id) + '/run', {});
+    await renderSummary();
+    hideLoading();
+    document.getElementById('results-title').textContent = 'Job Run';
+    document.getElementById('results-status').textContent = 'SUCCESS';
+    document.getElementById('results-status').className = 'results-status status-pass';
+    document.getElementById('content').innerHTML = '<p style="color:var(--green);font-weight:600">' + escapeHtml(data.execution.summary) + '</p>';
+    document.getElementById('raw-json').textContent = JSON.stringify(data, null, 2);
+    showResults();
+  } catch (e) {
+    hideLoading();
+    alert('Error: ' + e.message);
+  }
+}
+
+async function toggleJob(id) {
+  showLoading();
+  try {
+    const { data } = await apiPost('/api/automation/jobs/' + encodeURIComponent(id) + '/toggle', {});
+    hideLoading();
+    document.getElementById('results-title').textContent = 'Job Updated';
+    document.getElementById('results-status').textContent = data.job.enabled ? 'ACTIVE' : 'PAUSED';
+    document.getElementById('results-status').className = 'results-status ' + (data.job.enabled ? 'status-pass' : 'status-info');
+    document.getElementById('content').innerHTML = '<p style="color:var(--text-2)">' + escapeHtml(data.message) + '</p>';
+    document.getElementById('raw-json').textContent = JSON.stringify(data, null, 2);
+    showResults();
+    document.getElementById('jobs-btn').click();
+  } catch (e) {
+    hideLoading();
+    alert('Error: ' + e.message);
+  }
+}
+
+document.getElementById('summary-btn').click();
+</script>
+</body>
+</html>
