@@ -221,6 +221,10 @@ def validate_cell(value: str, expected_type: str, col_def: dict) -> list[str]:
 
 def validate_file(file_bytes: bytes, filename: str, schema: Optional[dict], max_errors: int = 100) -> dict:
     df = read_file(file_bytes, filename)
+    return validate_dataframe(df, filename, schema, max_errors=max_errors)
+
+
+def validate_dataframe(df: pd.DataFrame, filename: str, schema: Optional[dict], max_errors: int = 100) -> dict:
     total_rows, total_cols = len(df), len(df.columns)
     inferred = schema is None
     if inferred:

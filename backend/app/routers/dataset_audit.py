@@ -3,7 +3,7 @@
 Unified audit workflow combining schema validation, data quality, EDA, and anomaly checks.
 """
 
-import io
+import os
 from datetime import datetime
 
 import pandas as pd
@@ -13,6 +13,9 @@ from app import storage
 from app.routers import csv_validator, data_quality, eda_reporter, log_anomaly
 
 router = APIRouter()
+
+MAX_AUDIT_FILE_BYTES = int(os.getenv("DATASET_AUDIT_MAX_FILE_BYTES", str(8 * 1024 * 1024)))
+MAX_ANALYSIS_ROWS = int(os.getenv("DATASET_AUDIT_MAX_ROWS", "20000"))
 
 
 def _safe_numeric_scan(df: pd.DataFrame) -> list[dict]:
@@ -87,12 +90,24 @@ async def analyze_dataset(file: UploadFile = File(...)):
         raise HTTPException(400, "Unsupported file type")
 
     contents = await file.read()
+    if len(contents) > MAX_AUDIT_FILE_BYTES:
+        raise HTTPException(
+            413,
+            f"File too large for Dataset Audit on the current deployment. Please keep uploads under {MAX_AUDIT_FILE_BYTES // (1024 * 1024)} MB.",
+        )
+
     try:
-        validation_report = csv_validator.validate_file(contents, filename, None, max_errors=100)
         df = csv_validator.read_file(contents, filename)
-        quality_report = data_quality.compute_quality_report(df.copy(), filename)
-        eda_report = eda_reporter.generate_eda(df.copy(), filename)
-        anomaly_scan = _safe_numeric_scan(df.copy())
+        validation_report = csv_validator.validate_dataframe(df, filename, None, max_errors=100)
+        analysis_df = df
+        sampled_for_analysis = False
+        if len(df) > MAX_ANALYSIS_ROWS:
+            analysis_df = df.sample(n=MAX_ANALYSIS_ROWS, random_state=42)
+            sampled_for_analysis = True
+
+        quality_report = data_quality.compute_quality_report(analysis_df, filename)
+        eda_report = eda_reporter.generate_eda(analysis_df, filename)
+        anomaly_scan = _safe_numeric_scan(analysis_df)
     except HTTPException:
         raise
     except Exception as exc:
@@ -103,6 +118,12 @@ async def analyze_dataset(file: UploadFile = File(...)):
 
     audit_report = {
         "summary": summary,
+        "analysis_scope": {
+            "sampled_for_analysis": sampled_for_analysis,
+            "analyzed_rows": int(len(analysis_df)),
+            "total_rows": int(len(df)),
+            "max_analysis_rows": MAX_ANALYSIS_ROWS,
+        },
         "recommendations": recommendations,
         "validation_report": validation_report,
         "quality_report": quality_report,
