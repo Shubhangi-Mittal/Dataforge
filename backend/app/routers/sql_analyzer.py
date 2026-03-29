@@ -145,6 +145,87 @@ def suggest_indexes(query: str, tables: list) -> list[dict]:
     return deduped
 
 
+def build_clause_breakdown(query: str) -> list[dict]:
+    clauses = [
+        ("WITH", r"(?i)\bWITH\b", "Common table expressions used to stage intermediate logic"),
+        ("SELECT", r"(?i)\bSELECT\b", "Projected columns returned by the query"),
+        ("FROM", r"(?i)\bFROM\b", "Primary source tables"),
+        ("WHERE", r"(?i)\bWHERE\b", "Row-level filtering"),
+        ("GROUP BY", r"(?i)\bGROUP\s+BY\b", "Aggregation grouping"),
+        ("HAVING", r"(?i)\bHAVING\b", "Post-aggregation filtering"),
+        ("ORDER BY", r"(?i)\bORDER\s+BY\b", "Sorting result rows"),
+        ("LIMIT", r"(?i)\bLIMIT\b", "Caps output row count"),
+    ]
+    return [
+        {"clause": name, "present": bool(re.search(pattern, query)), "detail": detail}
+        for name, pattern, detail in clauses
+    ]
+
+
+def build_summary(query_type: str, complexity: dict, warnings: list[dict], joins: list[dict]) -> dict:
+    severity_rank = {"info": 1, "warning": 2, "error": 3, "critical": 4}
+    highest = "info"
+    if warnings:
+        highest = max(warnings, key=lambda w: severity_rank.get(w["severity"], 1))["severity"]
+
+    if highest in {"error", "critical"} or complexity["level"] in {"high", "very high"}:
+        risk = "high"
+    elif highest == "warning" or complexity["level"] == "medium":
+        risk = "medium"
+    else:
+        risk = "low"
+
+    headline_bits = [query_type.title(), complexity["level"] + " complexity"]
+    if joins:
+        headline_bits.append(f"{len(joins)} join{'s' if len(joins) != 1 else ''}")
+
+    actions = []
+    for warning in warnings[:3]:
+        actions.append(warning["suggestion"])
+    if not actions:
+        actions.append("Query shape looks healthy; validate against real execution plans before shipping.")
+
+    return {
+        "headline": " | ".join(headline_bits),
+        "risk_level": risk,
+        "highest_severity": highest,
+        "key_actions": actions,
+    }
+
+
+def build_optimization_checklist(query: str, warnings: list[dict], indexes: list[dict]) -> list[dict]:
+    warning_rules = {w["rule"] for w in warnings}
+    checklist = [
+        {
+            "label": "Projection is selective",
+            "status": "warning" if "select_star" in warning_rules else "pass",
+            "detail": "Avoid SELECT * so scans stay narrow and predictable.",
+        },
+        {
+            "label": "Filter strategy is bounded",
+            "status": "warning" if "no_where" in warning_rules else "pass",
+            "detail": "Queries with filters usually cost less than full-table scans.",
+        },
+        {
+            "label": "Sorting is scoped",
+            "status": "warning" if "order_without_limit" in warning_rules else "pass",
+            "detail": "Pair ORDER BY with LIMIT when you only need the top rows.",
+        },
+        {
+            "label": "Index opportunities captured",
+            "status": "pass" if indexes else "info",
+            "detail": "Suggested indexes are derived from WHERE, GROUP BY, and ORDER BY usage.",
+        },
+    ]
+    if re.search(r"(?i)\bJOIN\b", query):
+        checklist.append({
+            "label": "Join conditions are explicit",
+            "status": "error" if "implicit_cartesian" in warning_rules else "pass",
+            "detail": "Explicit JOIN ... ON clauses keep relationships readable and safer.",
+        })
+    return checklist
+
+
 def analyze_query(query: str, dialect: str = "postgresql") -> dict:
     q = query.strip().rstrip(";")
     if not q:
@@ -155,6 +236,7 @@ def analyze_query(query: str, dialect: str = "postgresql") -> dict:
     columns = parse_columns(q)
     complexity = calculate_complexity(q, joins, tables)
     indexes = suggest_indexes(q, tables)
+    clause_breakdown = build_clause_breakdown(q)
 
     warnings = []
     for rule in RULES:
@@ -172,12 +254,18 @@ def analyze_query(query: str, dialect: str = "postgresql") -> dict:
             q_type = t
             break
 
+    summary = build_summary(q_type, complexity, warnings, joins)
+    checklist = build_optimization_checklist(q, warnings, indexes)
+
     return {
         "query_type": q_type,
         "tables": tables,
         "columns": columns,
         "joins": joins,
         "complexity": complexity,
+        "summary": summary,
+        "clause_breakdown": clause_breakdown,
+        "optimization_checklist": checklist,
         "index_suggestions": indexes,
         "warnings": warnings,
         "warning_count": len(warnings),

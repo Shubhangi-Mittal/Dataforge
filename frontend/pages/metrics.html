@@ -117,6 +117,7 @@
   <div class="btn-row">
     <button class="btn btn-primary" id="list-btn">List All Metrics</button>
     <button class="btn btn-secondary" id="cat-btn">Categories</button>
+    <button class="btn btn-secondary" id="gov-btn">Governance Snapshot</button>
   </div>
 
   <div class="loading" id="loading"><div class="spinner"></div><p>Loading...</p></div>
@@ -238,6 +239,50 @@ document.getElementById('cat-btn').addEventListener('click', async () => {
     } else {
       h = '<p style="color:var(--text-3)">No categories yet.</p>';
     }
+    document.getElementById('content').innerHTML = h;
+    document.getElementById('raw-json').textContent = JSON.stringify(d, null, 2);
+    showResults();
+  } catch (e) { hideLoading(); alert('Error: ' + e.message); }
+});
+
+/* ── Governance Summary ────────────────────────────── */
+document.getElementById('gov-btn').addEventListener('click', async () => {
+  hideResults(); showLoading();
+  try {
+    const d = await apiGet('/api/metrics/governance/summary');
+    hideLoading();
+    document.getElementById('results-title').textContent = 'Governance Snapshot';
+    document.getElementById('results-status').textContent = d.total_metrics + ' metrics';
+    document.getElementById('results-status').className = 'results-status status-info';
+
+    let h = '<div class="stats-row" style="margin-bottom:20px">';
+    h += '<div class="stat-card"><div class="stat-val">' + d.coverage.owner_pct + '%</div><div class="stat-lbl">Owned</div></div>';
+    h += '<div class="stat-card"><div class="stat-val">' + d.coverage.sql_definition_pct + '%</div><div class="stat-lbl">SQL Defined</div></div>';
+    h += '<div class="stat-card"><div class="stat-val">' + d.coverage.tagged_pct + '%</div><div class="stat-lbl">Tagged</div></div>';
+    h += '<div class="stat-card"><div class="stat-val">' + d.coverage.dependency_mapped_pct + '%</div><div class="stat-lbl">Dependency Mapped</div></div>';
+    h += '</div>';
+
+    h += '<h4 style="font-size:0.88rem;margin:0 0 8px;font-weight:600">Category Coverage</h4>';
+    h += '<div class="category-pills" style="margin-bottom:18px">';
+    Object.entries(d.categories || {}).forEach(([cat, count]) => {
+      h += '<span class="category-pill">' + escapeHtml(cat) + '<span class="cat-count">' + count + '</span></span>';
+    });
+    h += '</div>';
+
+    h += '<h4 style="font-size:0.88rem;margin:0 0 8px;font-weight:600">Top Metadata Gaps</h4>';
+    if (d.gaps && d.gaps.length) {
+      h += '<div style="display:grid;gap:10px">';
+      d.gaps.forEach(gap => {
+        h += '<div style="padding:14px 16px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg-card)">';
+        h += '<div style="font-size:0.84rem;font-weight:600;margin-bottom:4px">' + escapeHtml(gap.name) + ' <span style="font-family:JetBrains Mono,monospace;color:var(--text-3)">(' + escapeHtml(gap.id) + ')</span></div>';
+        h += '<div style="font-size:0.78rem;color:var(--text-2)">Missing: ' + escapeHtml(gap.missing.join(', ')) + '</div>';
+        h += '</div>';
+      });
+      h += '</div>';
+    } else {
+      h += '<p style="color:var(--green);font-weight:600">No governance gaps detected in the current metric set.</p>';
+    }
+
     document.getElementById('content').innerHTML = h;
     document.getElementById('raw-json').textContent = JSON.stringify(d, null, 2);
     showResults();

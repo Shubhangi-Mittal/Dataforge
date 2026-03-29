@@ -31,6 +31,44 @@ class MetricInput(BaseModel):
     dependencies: list[str] = Field(default_factory=list)
 
 
+def build_governance_summary() -> dict:
+    metrics = list(METRICS.values())
+    total = len(metrics)
+    with_owner = sum(1 for m in metrics if m.get("owner"))
+    with_sql = sum(1 for m in metrics if m.get("sql_definition"))
+    with_tags = sum(1 for m in metrics if m.get("tags"))
+    with_dependencies = sum(1 for m in metrics if m.get("dependencies"))
+
+    gaps = []
+    for metric in metrics:
+        missing = []
+        if not metric.get("owner"):
+            missing.append("owner")
+        if not metric.get("sql_definition"):
+            missing.append("sql_definition")
+        if not metric.get("tags"):
+            missing.append("tags")
+        if missing:
+            gaps.append({"id": metric["id"], "name": metric["name"], "missing": missing})
+
+    categories = {}
+    for metric in metrics:
+        category = metric.get("category", "General") or "General"
+        categories[category] = categories.get(category, 0) + 1
+
+    return {
+        "total_metrics": total,
+        "coverage": {
+            "owner_pct": round((with_owner / total) * 100, 1) if total else 0,
+            "sql_definition_pct": round((with_sql / total) * 100, 1) if total else 0,
+            "tagged_pct": round((with_tags / total) * 100, 1) if total else 0,
+            "dependency_mapped_pct": round((with_dependencies / total) * 100, 1) if total else 0,
+        },
+        "categories": categories,
+        "gaps": gaps[:5],
+    }
+
+
 # ── Endpoints ──────────────────────────────────────────────
 @router.get("/")
 async def list_metrics(category: Optional[str] = None, tag: Optional[str] = None,
@@ -44,6 +82,20 @@ async def list_metrics(category: Optional[str] = None, tag: Optional[str] = None
         s = search.lower()
         metrics = [m for m in metrics if s in m["name"].lower() or s in m["description"].lower()]
     return {"count": len(metrics), "metrics": metrics}
+
+
+@router.get("/governance/summary")
+async def governance_summary():
+    return build_governance_summary()
+
+
+@router.get("/categories/list")
+async def list_categories():
+    cats = {}
+    for m in METRICS.values():
+        cat = m.get("category", "General")
+        cats[cat] = cats.get(cat, 0) + 1
+    return {"categories": cats}
 
 
 @router.get("/{metric_id}")
@@ -81,15 +133,6 @@ async def delete_metric(metric_id: str):
         raise HTTPException(404, f"Metric '{metric_id}' not found")
     del METRICS[metric_id]
     return {"message": f"Metric '{metric_id}' deleted"}
-
-
-@router.get("/categories/list")
-async def list_categories():
-    cats = {}
-    for m in METRICS.values():
-        cat = m.get("category", "General")
-        cats[cat] = cats.get(cat, 0) + 1
-    return {"categories": cats}
 
 
 @router.get("/{metric_id}/lineage")

@@ -53,6 +53,8 @@
       <div class="stats-row" id="stats-row"></div>
 
       <div id="gauge-section"></div>
+      <div id="highlights-section"></div>
+      <div id="recommendations-section"></div>
 
       <div id="bar-chart-section"></div>
 
@@ -174,6 +176,38 @@ function render(d) {
 
   // Gauge
   document.getElementById('gauge-section').innerHTML = buildGaugeSVG(s.overall_completeness_pct);
+
+  // Highlights
+  const highlights = d.highlights || {};
+  let hHtml = '';
+  if ((highlights.healthiest_columns && highlights.healthiest_columns.length) || (highlights.most_problematic_columns && highlights.most_problematic_columns.length)) {
+    hHtml += '<h4 style="font-size:0.88rem;margin:20px 0 8px;font-weight:600">Dataset Highlights</h4>';
+    hHtml += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px">';
+    hHtml += '<div style="padding:16px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-card)"><div style="font-size:0.76rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px">Healthiest Columns</div>';
+    (highlights.healthiest_columns || []).forEach(col => {
+      hHtml += '<div style="display:flex;justify-content:space-between;gap:10px;font-size:0.8rem;margin-bottom:6px"><span>' + escapeHtml(col.column) + '</span><span style="color:var(--green)">' + col.completeness_pct + '%</span></div>';
+    });
+    hHtml += '</div>';
+    hHtml += '<div style="padding:16px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-card)"><div style="font-size:0.76rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px">Needs Attention</div>';
+    (highlights.most_problematic_columns || []).forEach(col => {
+      hHtml += '<div style="display:flex;justify-content:space-between;gap:10px;font-size:0.8rem;margin-bottom:6px"><span>' + escapeHtml(col.column) + '</span><span style="color:var(--orange)">' + col.null_count + ' nulls</span></div>';
+    });
+    hHtml += '</div>';
+    hHtml += '</div>';
+  }
+  document.getElementById('highlights-section').innerHTML = hHtml;
+
+  // Recommendations
+  let rHtml = '';
+  if (d.recommendations && d.recommendations.length) {
+    rHtml += '<h4 style="font-size:0.88rem;margin:20px 0 8px;font-weight:600">Recommended Next Steps</h4>';
+    rHtml += '<div style="display:grid;gap:10px">';
+    d.recommendations.forEach(rec => {
+      rHtml += '<div style="padding:14px 16px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-card);font-size:0.82rem;color:var(--text-2)">' + escapeHtml(rec) + '</div>';
+    });
+    rHtml += '</div>';
+  }
+  document.getElementById('recommendations-section').innerHTML = rHtml;
 
   // Bar chart
   if (d.columns && d.columns.length) {

@@ -56,10 +56,13 @@ ORDER BY total_spent DESC</textarea>
     </div>
     <div class="results-body">
       <div class="stats-row" id="stats-row"></div>
+      <div id="summary-section"></div>
       <div id="complexity-section"></div>
+      <div id="checklist-section"></div>
       <div id="joins-section"></div>
       <div id="warnings-section"></div>
       <div id="indexes-section"></div>
+      <div id="clauses-section"></div>
       <div id="query-breakdown"></div>
       <details style="margin-top:16px">
         <summary style="cursor:pointer;font-size:0.82rem;color:var(--text-3);font-weight:600">Raw JSON</summary>
@@ -158,6 +161,7 @@ function buildGauge(score, level) {
 
 function renderAnalysis(d) {
   const c = d.complexity;
+  const summary = d.summary || {};
 
   // Status badge
   const statusEl = document.getElementById('results-status');
@@ -171,10 +175,49 @@ function renderAnalysis(d) {
     '<div class="stat-card"><div class="stat-val">' + d.joins.length + '</div><div class="stat-lbl">Joins</div></div>' +
     '<div class="stat-card"><div class="stat-val">' + d.warning_count + '</div><div class="stat-lbl">Warnings</div></div>';
 
+  var sHtml = '';
+  if (summary.headline) {
+    var riskColor = summary.risk_level === 'high' ? 'pill-red' : summary.risk_level === 'medium' ? 'pill-orange' : 'pill-green';
+    sHtml += '<h4 style="font-size:0.88rem;margin:20px 0 8px;font-weight:600">Executive Summary</h4>';
+    sHtml += '<div style="padding:16px 18px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-card)">';
+    sHtml += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">';
+    sHtml += '<span class="pill ' + riskColor + '">' + escapeHtml(summary.risk_level || 'low') + ' risk</span>';
+    sHtml += '<span style="font-size:0.92rem;font-weight:600;color:var(--text-1)">' + escapeHtml(summary.headline) + '</span>';
+    sHtml += '</div>';
+    if (summary.key_actions && summary.key_actions.length) {
+      sHtml += '<div style="font-size:0.8rem;color:var(--text-2);display:grid;gap:6px">';
+      summary.key_actions.forEach(function(action) {
+        sHtml += '<div>• ' + escapeHtml(action) + '</div>';
+      });
+      sHtml += '</div>';
+    }
+    sHtml += '</div>';
+  }
+  document.getElementById('summary-section').innerHTML = sHtml;
+
   // Complexity gauge
   var cHtml = '<h4 style="font-size:0.88rem;margin:20px 0 8px;font-weight:600">Complexity Analysis</h4>';
   cHtml += buildGauge(c.score, c.level);
   document.getElementById('complexity-section').innerHTML = cHtml;
+
+  // Optimization checklist
+  var chkHtml = '';
+  if (d.optimization_checklist && d.optimization_checklist.length) {
+    chkHtml += '<h4 style="font-size:0.88rem;margin:20px 0 8px;font-weight:600">Optimization Checklist</h4>';
+    chkHtml += '<div style="display:grid;gap:10px">';
+    d.optimization_checklist.forEach(function(item) {
+      var pillClass = item.status === 'pass' ? 'pill-green' : item.status === 'warning' ? 'pill-orange' : item.status === 'error' ? 'pill-red' : 'pill-cyan';
+      chkHtml += '<div style="padding:12px 16px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg-card)">' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;flex-wrap:wrap">' +
+        '<span class="pill ' + pillClass + '">' + escapeHtml(item.status) + '</span>' +
+        '<span style="font-size:0.84rem;font-weight:600">' + escapeHtml(item.label) + '</span>' +
+        '</div>' +
+        '<div style="font-size:0.78rem;color:var(--text-2)">' + escapeHtml(item.detail) + '</div>' +
+        '</div>';
+    });
+    chkHtml += '</div>';
+  }
+  document.getElementById('checklist-section').innerHTML = chkHtml;
 
   // Complexity factors
   var factorsEl = document.getElementById('complexity-factors');
@@ -239,6 +282,24 @@ function renderAnalysis(d) {
     iHtml += '</tbody></table>';
   }
   document.getElementById('indexes-section').innerHTML = iHtml;
+
+  // Clause breakdown
+  var clHtml = '';
+  if (d.clause_breakdown && d.clause_breakdown.length) {
+    clHtml += '<h4 style="font-size:0.88rem;margin:20px 0 8px;font-weight:600">Clause Coverage</h4>';
+    clHtml += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">';
+    d.clause_breakdown.forEach(function(clause) {
+      clHtml += '<div style="padding:14px 16px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg-card)">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px">' +
+        '<span style="font-size:0.82rem;font-weight:600">' + escapeHtml(clause.clause) + '</span>' +
+        '<span class="pill ' + (clause.present ? 'pill-green' : 'pill-cyan') + '">' + (clause.present ? 'present' : 'missing') + '</span>' +
+        '</div>' +
+        '<div style="font-size:0.76rem;color:var(--text-2)">' + escapeHtml(clause.detail) + '</div>' +
+        '</div>';
+    });
+    clHtml += '</div>';
+  }
+  document.getElementById('clauses-section').innerHTML = clHtml;
 
   // Visual Query Breakdown — tables as connected cards
   var bHtml = '';

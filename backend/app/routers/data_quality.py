@@ -101,6 +101,32 @@ def compute_quality_report(df: pd.DataFrame, filename: str) -> dict:
     overall_completeness = round((1 - null_cells / total_cells) * 100, 1) if total_cells > 0 else 0
     overall_score = "good" if overall_completeness >= 95 else "fair" if overall_completeness >= 80 else "poor"
 
+    ranked_columns = sorted(column_reports, key=lambda c: (c["completeness_pct"], -c["unique_count"]))
+    healthiest_columns = sorted(column_reports, key=lambda c: (-c["completeness_pct"], c["null_count"]))[:3]
+    most_problematic_columns = ranked_columns[:3]
+
+    recommendations = []
+    if any(a["type"] == "completeness" for a in alerts):
+        recommendations.append("Prioritize missing-value remediation on the least complete columns before downstream modeling.")
+    if any(a["type"] == "outliers" for a in alerts):
+        recommendations.append("Review numeric outliers to confirm whether they are genuine business events or data entry issues.")
+    if total_rows > 0 and df.duplicated().sum() > 0:
+        recommendations.append("Deduplicate repeated rows before reporting, or define a business key to isolate intentional repeats.")
+    if not recommendations:
+        recommendations.append("Dataset quality looks stable; the next step is defining business rules for freshness and acceptable ranges.")
+
+    highlights = {
+        "healthiest_columns": [
+            {"column": c["column"], "completeness_pct": c["completeness_pct"], "unique_count": c["unique_count"]}
+            for c in healthiest_columns
+        ],
+        "most_problematic_columns": [
+            {"column": c["column"], "completeness_pct": c["completeness_pct"], "null_count": c["null_count"]}
+            for c in most_problematic_columns
+        ],
+        "duplicate_rows": int(df.duplicated().sum()),
+    }
+
     return {
         "summary": {
             "filename": filename,
@@ -113,6 +139,8 @@ def compute_quality_report(df: pd.DataFrame, filename: str) -> dict:
         },
         "columns": column_reports,
         "alerts": alerts,
+        "highlights": highlights,
+        "recommendations": recommendations,
     }
 
 
