@@ -4,6 +4,7 @@ Shared SQLite persistence layer for DataForge.
 
 import json
 import math
+import os
 import sqlite3
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
@@ -14,7 +15,7 @@ import numpy as np
 import pandas as pd
 
 
-DB_PATH = Path(__file__).resolve().parents[1] / "dataforge_platform.db"
+DB_PATH = Path(os.getenv("DATAFORGE_DB_PATH", Path(__file__).resolve().parents[1] / "dataforge_platform.db"))
 
 
 def get_connection() -> sqlite3.Connection:

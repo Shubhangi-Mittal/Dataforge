@@ -1,7 +1,7 @@
 Deployment notes — DataForge
 
 Goal
-- Deploy frontend to Vercel (static) and backend to Render (Python web service).
+- Deploy frontend to Vercel (static) and backend to Render or Fly.io (Python web service).
 
 Frontend (Vercel)
 - The frontend reads the backend URL at runtime from `window.__API_BASE__`.
@@ -19,11 +19,28 @@ Backend (Render)
 - If you need multiple frontend origins, set `ALLOWED_ORIGINS` as a comma-separated list instead.
 - `ENV=production` disables the verbose development exception handler in production.
 
+Backend (Fly.io)
+- `backend/fly.toml` is included for a container-based Fly deployment.
+- The app expects a persistent volume mounted at `/data` and stores SQLite at `DATAFORGE_DB_PATH=/data/dataforge_platform.db`.
+- Recommended steps:
+  1. Install `flyctl` and sign in.
+  2. Run `cd backend`.
+  3. Run `fly launch --no-deploy` and keep the generated app name or update `app` in `fly.toml`.
+  4. Create the persistent volume: `fly volumes create data --region <your-region> --size 1`.
+  5. Set secrets:
+     - `fly secrets set FRONTEND_URL=https://your-vercel-app.vercel.app`
+     - `fly secrets set ALLOWED_ORIGINS=https://your-vercel-app.vercel.app`
+  6. Deploy with `fly deploy`.
+- The included `fly.toml` uses `shared-cpu-1x` with `1024MB` RAM, which is a better fit for pandas-based uploads than smaller free-tier instances.
+
 Files added/changed
 - `frontend/env.js` — runtime loader that sets `window.__API_BASE__` for local and production fallbacks.
 - `frontend/favicon.svg` and `frontend/favicon.ico` — favicons to avoid 404s.
 - `backend/app/routers/csv_validator.py` — robust CSV parsing, encoding sniffing, binary detection, and helpful 400 errors.
 - `backend/app/main.py` — explicit CORS and development exception handler.
+- `backend/app/storage.py` — database path can now be overridden with `DATAFORGE_DB_PATH`, which is used by Fly volumes.
+- `backend/fly.toml` — Fly.io app config with a persistent `/data` mount.
+- `backend/.dockerignore` — smaller Fly Docker build context.
 - `frontend/js/config.js` — frontend requests now fail clearly when `API_BASE` was not configured during deployment.
 - `frontend/vercel.json` — security headers only, plus `env.js` is marked `no-store` so API host changes propagate cleanly.
 
