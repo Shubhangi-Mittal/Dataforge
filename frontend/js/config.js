@@ -5,7 +5,7 @@ const isLocal = /^(localhost|127\.0\.0\.1|::1?|\[.*\])$/.test(window.location.ho
 const configuredApiBase = typeof window.__API_BASE__ === 'string' ? window.__API_BASE__.trim() : '';
 
 if (!configuredApiBase && !isLocal) {
-  console.warn('DataForge API base is not configured. Add API_BASE during the frontend build so deployed pages can reach Render.');
+  console.warn('DataForge API base is not configured. Add API_BASE during the frontend build so deployed pages can reach the backend.');
 }
 
 const API_BASE = configuredApiBase || (isLocal ? 'http://localhost:8000' : '');
@@ -42,7 +42,7 @@ async function apiUpload(path, file, extraParams = {}) {
     form.append(k, v);
   }
   const res = await fetch(`${API_BASE}${path}`, { method: 'POST', body: form });
-  const data = await res.json();
+  const data = await res.json().catch(() => ({ detail: res.statusText }));
   if (!res.ok && res.status !== 422) {
     throw new Error(data.detail || `HTTP ${res.status}`);
   }

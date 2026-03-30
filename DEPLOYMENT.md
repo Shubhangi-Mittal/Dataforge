@@ -1,23 +1,17 @@
 Deployment notes — DataForge
 
 Goal
-- Deploy frontend to Vercel (static) and backend to Render or Fly.io (Python web service).
+- Deploy frontend to Vercel (static) and backend to Fly.io (Python web service).
 
 Frontend (Vercel)
 - The frontend reads the backend URL at runtime from `window.__API_BASE__`.
 - Recommended Vercel setup:
   1. Set the project root to `frontend`.
-  2. Add an `API_BASE` environment variable in Vercel with your Render backend URL, for example `https://dataforge-api.onrender.com`.
+  2. Add an `API_BASE` environment variable in Vercel with your Fly backend URL, for example `https://dataforge-api.fly.dev`.
   3. Add the build command `cd .. && npm run build`.
   4. Keep the output directory as `.` because the built site remains in `frontend/`.
 - `npm run build` writes `frontend/env.js` using `scripts/generate-env.js`, so the deployed frontend knows where the backend lives.
 - The API Docs button is now populated from `window.__API_BASE__`; there is no hardcoded `/docs` rewrite to keep in sync.
-
-Backend (Render)
-- `backend/render.yaml` is configured to run the app using `uvicorn` and install `requirements.txt`.
-- Set `FRONTEND_URL` to your Vercel production URL, for example `https://dataforge.vercel.app`.
-- If you need multiple frontend origins, set `ALLOWED_ORIGINS` as a comma-separated list instead.
-- `ENV=production` disables the verbose development exception handler in production.
 
 Backend (Fly.io)
 - `backend/fly.toml` is included for a container-based Fly deployment.
@@ -55,4 +49,4 @@ Quick local test
 
 Notes
 - For production, configure `FRONTEND_URL` or `ALLOWED_ORIGINS` before exposing the backend publicly.
-- Before the first Vercel deploy, verify the `API_BASE` env var points to the live Render service, not localhost.
+- Before the first Vercel deploy, verify the `API_BASE` env var points to the live Fly service, not localhost.

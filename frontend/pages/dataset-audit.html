@@ -29,6 +29,7 @@
       <li>Scans numeric columns for anomaly signals</li>
       <li>Saves the final report to audit history for later review</li>
     </ul>
+    <p style="margin-top:10px;color:var(--text-2);font-size:0.82rem">Best for small to medium datasets. Very large files may be rejected or sampled during the heavier analysis steps.</p>
   </div>
 
   <div class="upload-zone" id="drop-zone">
@@ -110,7 +111,12 @@ document.getElementById('audit-btn').addEventListener('click', async () => {
     showResults();
   } catch (e) {
     hideLoading();
-    alert('Error: ' + e.message);
+    const message = String(e.message || '');
+    if (message.includes('413')) {
+      alert('This file is too large for Dataset Audit on the live deployment. Try a smaller file or trim unused columns before uploading.');
+    } else {
+      alert('Error: ' + message);
+    }
   }
 });
 
@@ -173,6 +179,14 @@ function renderAudit(data) {
   document.getElementById('recommendations-section').innerHTML = recHtml;
 
   let html = '';
+  if (data.analysis_scope) {
+    const scope = data.analysis_scope;
+    html += '<div style="margin:18px 0 10px;padding:14px 16px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-card);font-size:0.8rem;color:var(--text-2)">' +
+      (scope.sampled_for_analysis
+        ? 'Analysis used a sampled subset of <strong>' + scope.analyzed_rows + '</strong> rows out of <strong>' + scope.total_rows + '</strong> to keep processing responsive.'
+        : 'Analysis ran on the full uploaded dataset of <strong>' + scope.total_rows + '</strong> rows.') +
+      '</div>';
+  }
   html += '<h4 style="font-size:0.88rem;margin:20px 0 8px;font-weight:600">Audit Highlights</h4>';
   html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px">';
   html += '<div style="padding:16px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-card)"><div style="font-size:0.76rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px">Validation Status</div><div style="font-size:0.92rem;font-weight:600">' + escapeHtml((data.validation_report || {}).summary?.status || 'UNKNOWN') + '</div><div style="font-size:0.78rem;color:var(--text-2);margin-top:6px">' + ((data.validation_report || {}).summary?.total_errors || 0) + ' issue(s) found</div></div>';

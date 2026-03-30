@@ -5,7 +5,6 @@
 ![Python](https://img.shields.io/badge/Python-3.11-blue?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)
 ![Vercel](https://img.shields.io/badge/Frontend-Vercel-black?logo=vercel&logoColor=white)
-![Render](https://img.shields.io/badge/Backend-Render-46E3B7?logo=render&logoColor=white)
 ![Fly.io](https://img.shields.io/badge/Backend-Fly.io-8B5CF6?logo=flydotio&logoColor=white)
 
 🔗 **Live Demo**: Frontend on Vercel · API Docs on deployed backend
@@ -33,7 +32,7 @@
 
 ```
 dataforge/
-├── backend/                  # FastAPI (deploy on Render)
+├── backend/                  # FastAPI (deploy on Fly.io)
 │   ├── app/
 │   │   ├── main.py           # App entry + router registration
 │   │   └── routers/          # 10 tool routers
@@ -75,16 +74,6 @@ dataforge/
 
 ## 🚀 Deployment (Free Tier)
 
-### Backend → Render.com or Fly.io
-
-1. Push `backend/` folder to a GitHub repo
-2. Go to [render.com](https://render.com) → New Web Service
-3. Connect your repo, set root directory to `backend`
-4. Build command: `pip install -r requirements.txt`
-5. Start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-6. Add environment variable `FRONTEND_URL=https://your-vercel-app.vercel.app`
-7. Deploy — note your URL (e.g., `https://dataforge-api.onrender.com`)
-
 ### Backend → Fly.io
 
 1. Install `flyctl` and sign in
@@ -103,7 +92,7 @@ dataforge/
 
 1. Import the same repo into Vercel with root directory set to `frontend`
 2. Go to [vercel.com](https://vercel.com) → Import Project
-3. Set environment variable `API_BASE=https://your-render-app.onrender.com`
+3. Set environment variable `API_BASE=https://your-fly-app.fly.dev`
 4. Set build command to `cd .. && npm run build`
 5. Deploy — done!
 
@@ -126,7 +115,7 @@ python -m http.server 3000
 
 ## 📡 API Overview
 
-All endpoints are under `https://your-render-app.onrender.com/api/`
+All endpoints are under `https://your-fly-app.fly.dev/api/`
 
 | Tool | Endpoints |
 |------|-----------|
@@ -152,7 +141,7 @@ Full interactive docs at `/docs` (Swagger UI).
 - **Statistical analysis** — z-scores, IQR, correlation matrices, distribution analysis
 - **Graph algorithms** — topological sort, critical path analysis for DAG pipelines
 - **ELT patterns** — API ingestion, field mapping, database sync workflows
-- **Full-stack deployment** — free-tier Vercel + Render setup with CORS handling
+- **Full-stack deployment** — Vercel + Fly.io setup with CORS handling and persistent storage
 
 ---
 
